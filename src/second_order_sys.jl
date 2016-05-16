@@ -1,10 +1,10 @@
 using ControlSystems
+using DeterministicPolicyGradient
 import DSP
 try
 close("all")
 catch
 end
-include("bandit.jl")
 # const G = tf([1,-1],[1,0.01,1])
 const G = tf(0.1,[1,0.01,0.1])
 
