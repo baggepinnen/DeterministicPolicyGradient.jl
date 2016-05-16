@@ -1,5 +1,6 @@
 module DeterministicPolicyGradient
 
-# package code goes here
+include("utilities.jl")
+include("dpg.jl")
 
 end # module
