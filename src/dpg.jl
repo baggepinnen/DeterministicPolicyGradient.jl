@@ -25,11 +25,14 @@ type DPGfuns
     Q::Function
     simulate::Function
     exploration::Function
+    reward::Function
 end
 
 function J(x,a,r)
     cost = @parallel (+) for t = 1:size(x,1)
     r(x[t,:][:],a[t])
+    end
+    -cost
 end
 
 
@@ -55,6 +58,7 @@ function dpg(opts, funs, x0)
     Q           = funs.Q
     simulate    = funs.simulate
     exploration = funs.exploration
+    r           = funs.reward
 
     # Determine sizes
     n = length(x0)

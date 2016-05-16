@@ -1,5 +1,4 @@
 julia 0.4
-Plots
-PyPlot
 ControlSystems
 DynamicMovementPrimitives
+DSP
