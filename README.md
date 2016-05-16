@@ -11,7 +11,7 @@ See file `second_order_sys.jl`, which requires `Plots.jl` and `PyPlot.jl` to dis
 ```julia
 using ControlSystems
 using DeterministicPolicyGradient
-import DSP
+
 try
   close("all")
 catch
@@ -73,7 +73,7 @@ V(s,v)          = v'ϕ(s) # It's a good idea to bias V to some mean of the final
 Q(s,a,v,w,Θ)    = (ϕ(s,a,Θ)'w + V(s,v))[1]
 simulate(Θ,x0, noise) = lsim(G, (i,s)->β(s,Θ,noise,i), t, x0)[3:4]
 simulate(Θ,x0)  = lsim(G, (i,s)->μ(s,Θ), t, x0)[3:4]
-exploration(σβ) = DSP.filtfilt(ones(5),[5],σβ*randn(T))
+exploration(σβ) = filt(ones(5),[5],σβ*randn(T))
 funs            = DPGfuns(μ,∇μ,β,ϕ,V,Q, simulate, exploration, r)
 
 

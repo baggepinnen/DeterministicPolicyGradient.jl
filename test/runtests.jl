@@ -1,6 +1,6 @@
 using DeterministicPolicyGradient, ControlSystems
 using Base.Test
-import DSP
+
 
 const G = tf(0.1,[1,0.01,0.1])
 
