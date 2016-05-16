@@ -9,8 +9,8 @@ julia:
 notifications:
   email: false
 
-julia -e "Pkg.add("ControlSystems")"
-julia -e "Pkg.checkout("ControlSystems")"
+  - jjulia -e "Pkg.add("ControlSystems")"
+  - jjulia -e "Pkg.checkout("ControlSystems")"
 # uncomment the following lines to override the default test script
 #script:
 #  - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
