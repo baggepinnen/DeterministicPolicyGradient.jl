@@ -9,9 +9,8 @@ julia:
 notifications:
   email: false
 
-  - julia -e 'Pkg.add("ControlSystems")'
-  - julia -e 'Pkg.checkout("ControlSystems")'
+
 # uncomment the following lines to override the default test script
-#script:
-#  - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
-#  - julia -e 'Pkg.clone(pwd()); Pkg.build("DeterministicPolicyGradient"); Pkg.test("DeterministicPolicyGradient"; coverage=true)'
+script:
+ - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
+ - julia -e 'Pkg.add("ControlSystems"); Pkg.checkout("ControlSystems"); Pkg.clone(pwd()); Pkg.build("DeterministicPolicyGradient"); Pkg.test("DeterministicPolicyGradient"; coverage=true)'
