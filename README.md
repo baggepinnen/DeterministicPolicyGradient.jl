@@ -2,8 +2,11 @@
 
 [![Build Status](https://travis-ci.org/baggepinnen/DeterministicPolicyGradient.jl.svg?branch=master)](https://travis-ci.org/baggepinnen/DeterministicPolicyGradient.jl)
 
+This package provides an implementation of the algorithm in the paper
+"David Silver et al.. Deterministic Policy Gradient Algorithms. 2014."
+
 # Usage
-See file `second_order_sys.jl`
+See file `second_order_sys.jl`, which requires `Plots.jl` and `PyPlot.jl` to display the results.
 
 ```julia
 using ControlSystems
@@ -71,7 +74,7 @@ Q(s,a,v,w,Θ)    = (ϕ(s,a,Θ)'w + V(s,v))[1]
 simulate(Θ,x0, noise) = lsim(G, (i,s)->β(s,Θ,noise,i), t, x0)[3:4]
 simulate(Θ,x0)  = lsim(G, (i,s)->μ(s,Θ), t, x0)[3:4]
 exploration(σβ) = DSP.filtfilt(ones(5),[5],σβ*randn(T))
-funs            = DPGfuns(μ,∇μ,β,ϕ,V,Q, simulate, exploration)
+funs            = DPGfuns(μ,∇μ,β,ϕ,V,Q, simulate, exploration, r)
 
 
 # Train the actor and critic ==========================================
