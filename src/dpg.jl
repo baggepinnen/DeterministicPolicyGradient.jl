@@ -1,4 +1,12 @@
+"""
+`DPGopts(m;σβ=1.,αΘ=0.0001,αw=0.001,αv=0.001,αu=0.001,γ=0.99,τ=0.001,iters=20_000, rls_critic=true,λrls=0.999,stepreduce_interval=1000,stepreduce_factor=0.995,hold_actor=1000)`
 
+Structure with options to the DMP
+
+# Fields
+`σβ, αΘ, αw, αv, αu, γ, τ, iters, m, rls_critic, λrls, stepreduce_interval, stepreduce_factor, hold_actor`\n
+See example file or the paper by Ijspeert et al. 2013
+ """
 type DPGopts
     σβ
     αΘ::Float64
@@ -11,11 +19,23 @@ type DPGopts
     m::Int64
     rls_critic::Bool
     λrls::Float64
+    stepreduce_interval::Int
+    stepreduce_factor::Float64
+    hold_actor::Int
 end
 
-DPGopts(m;σβ=1.,αΘ=0.0001,αw=0.001,αv=0.001,αu=0.001,γ=0.99,τ=0.001,iters=20_000, rls_critic=true,λrls=0.999) =
-DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,rls_critic,λrls)
+DPGopts(m;σβ=1.,αΘ=0.0001,αw=0.001,αv=0.001,αu=0.001,γ=0.99,τ=0.001,iters=20_000, rls_critic=true,λrls=0.999,stepreduce_interval=1000,stepreduce_factor=0.995,hold_actor=1000) =
+DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,rls_critic,λrls,stepreduce_interval,stepreduce_factor,hold_actor)
 
+"""
+Structure with functions to pass to the DMP
+
+# Fields
+
+`μ,∇μ,β,ϕ,V,Q,simulate,exploration,reward`
+
+See example file or the paper by Silver et al. 2014
+"""
 type DPGfuns
     μ::Function
     ∇μ::Function
@@ -36,7 +56,16 @@ function J(x,a,r)
 end
 
 
+"""
+`cost, Θ, w, v = dpg(opts, funs, x0)`
 
+Main function.
+
+# Arguments
+`opts::DPGopts` structure with options and parameters\n
+`funs::DPGfuns` structure with functions\n
+`x0` initial state
+"""
 function dpg(opts, funs, x0)
     # Expand input structs
     σβ          = opts.σβ
@@ -135,7 +164,7 @@ function dpg(opts, funs, x0)
         end
 
         # RMS prop update parameters (gradient divided by running average of RMS gradient, see. http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf slide 29
-        if i > 1_000
+        if i > opts.hold_actor
             dΘs = 0.9dΘs + 0.1dΘ.^2
             Θ = Θ + αΘ/T * dΘ./(sqrt(dΘs)+0.00001)
         end
@@ -149,16 +178,16 @@ function dpg(opts, funs, x0)
         # Update tracking networks
         Θt, wt, vt = τ*Θ + (1-τ)*Θt, τ*w + (1-τ)*wt, τ*v + (1-τ)*vt
 
-        if i % 5000 == 0
-            αΘ  *= 0.995
-            αw  *= 0.995
-            αv  *= 0.995
+        if i % opts.stepreduce_interval == 0 # Every 5000 steps, reduce learning rate
+            αΘ  *= opts.stepreduce_factor
+            αw  *= opts.stepreduce_factor
+            αv  *= opts.stepreduce_factor
         end
 
         if (i-1) % 100 == 0 # Simulate without noise and evaluate cost
             x,uout = simulate(Θ, x0)
             cost[i] = J(x,uout,r)
-            println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", sqrt(sum(dΘs)) |> r5, " norm ∇w: ", sqrt(sum(dws)) |> r5, " norm ∇v: ", sqrt(sum(dvs)) |> r5)#, " trace(P): ", trace(Pvw) |> r5)
+            println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5, " norm ∇w: ", Σ½(dws) |> r5, " norm ∇v: ", Σ½(dvs) |> r5)#, " trace(P): ", trace(Pvw) |> r5)
             if cost[i] < bestcost
                 bestcost = cost[i]
                 Θb = deepcopy(Θ)

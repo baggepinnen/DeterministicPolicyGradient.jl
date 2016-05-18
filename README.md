@@ -5,6 +5,14 @@
 This package provides an implementation of the algorithm in the paper
 "David Silver et al.. Deterministic Policy Gradient Algorithms. 2014."
 
+## Installation
+
+```julia
+Pkg.add("DeterministicPolicyGradient")
+Pkg.checkout("DeterministicPolicyGradient") # Recommended to get the latest version
+using DeterministicPolicyGradient
+```
+
 # Usage
 See file `second_order_sys.jl`, which requires `Plots.jl` and `PyPlot.jl` to display the results.
 

@@ -1,4 +1,5 @@
 r5(x) = round(x,5)
+Σ½(x) = sqrt(sum(x))
 
 function meshgrid(a,b)
     grid_a = [i for i in a, j in b]

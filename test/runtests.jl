@@ -21,17 +21,20 @@ L = lqr(ss(G),Q1,Q2)
 
 
 # Initialize solver options ==========================================
-σβ      = 2
-αΘ      = 0.005
-αw      = 0.001
-αv      = 0.001
-αu      = 0.01
-γ       = 0.999
-τ       = 0.01
-iters   = 10_000
-rls_critic = true
-λrls    = 0.99999
-const opts = DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,rls_critic,λrls)
+σβ                  = 2
+αΘ                  = 0.01
+αw                  = 0.01
+αv                  = 0.01
+αu                  = 0.01
+γ                   = 0.999
+τ                   = 0.01
+iters               = 2_000
+rls_critic          = true
+λrls                = 0.99999
+stepreduce_interval = 5000
+stepreduce_factor   = 0.995
+hold_actor          = 100
+const opts = DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,rls_critic,λrls,stepreduce_interval,stepreduce_factor,hold_actor)
 
 
 # Initialize functions      ==========================================
