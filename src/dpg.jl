@@ -50,7 +50,7 @@ end
 
 function J(x,a,r)
     cost = @parallel (+) for t = 1:size(x,1)
-    r(x[t,:][:],a[t])
+    r(x[t,:][:],a[t,:][:])
     end
     -cost
 end
@@ -110,6 +110,7 @@ function dpg(opts, funs, x0)
     dvs         = 100ones(P)
     cost        = zeros(iters)
     bestcost    = Inf
+
     if rls_critic
         Pw = 1eye(P)
         Pv = 1eye(P)
@@ -138,15 +139,14 @@ function dpg(opts, funs, x0)
             s           = x[ti,:][:]
             a           = uout[ti,:][:]
             a1          = μ(s1,Θ)
-            ri          = r(s1,a) # TODO: figure out if s1 or s goes here, probably s1
+            ri          = r(s1,a)
             cost[i]    -= ri
 
             ∇i          = ∇μ(s)
             ϕi          = ϕ(s)
             ϕia         = ϕ(s,a,Θ)
             # ϕu          = (ϕia'u)[1]
-
-            dΘ         += ∇i* (∇i'w)[1]
+            dΘ         += ∇i.*(∇i'w)' # TODO: This line has been modified slightly from the paper to accomodate multidimensional control laws
             if rls_critic
                 y = ri + γ * Q(s1,a1,vt,wt,Θt)
                 # vw,Pvw = RLS([v;w], y, [ϕi;ϕia], Pvw, λrls)

@@ -14,13 +14,36 @@ function meshgrid2(a,b,c)
     grid_a, grid_b, grid_c
 end
 
+"""
+`C, Σ = get_centers_multi(centers,σvec)`\n
+Returns multidimensional centers and covariance matrices by gridding.
+´centers´ is a matrix with n_basis×n_signals center coordinates\n
+`σvec` is a matrix with the corresponding n_basis×n_signals widths
+`C, Σ` are the corresponding multidimensional center locations and shapes, both are n_signals × nbasis^n_signals
+"""
+function get_centers_multi(centers,σvec)
+    (nbasis,Nsignals) = size(centers)
+    Nbasis::Int64 = nbasis^Nsignals
+    Centers = zeros(Nsignals, Nbasis)
+    Σ = zeros(Nsignals, Nbasis)
+    v = Nbasis
+    h = 1
+    for i = 1:Nsignals
+        v = convert(Int64,v / nbasis)
+        Centers[i,:] = vec(repmat(centers[:,i]',v,h))'
+        Σ[i,:] = vec(repmat(σvec[:,i]',v,h))'
+        h *= nbasis
+    end
+    Centers, Σ
+end
+
 function RLS!(Θ, y, ϕ, P, λ)
     Pϕ = P*ϕ
-    P = 1/λ*(P - (Pϕ*Pϕ')./(λ + ϕ'*Pϕ))
+    P[:,:] = 1/λ*(P - (Pϕ*Pϕ')./(λ + ϕ'*Pϕ))
     yp = (ϕ'Θ)[1]
     e = y-yp
     Θ += Pϕ*e
-    return P
+    return nothing
 end
 
 function RLS(Θ, y, ϕ, P, λ)
@@ -40,4 +63,9 @@ function kalman(R1,R2,R12,Θ, y, ϕ, P)
     e = y-yp
     Θ = Θ + K*e
     return Θ, P
+end
+
+
+function quadform(a,Q)
+    vecdot(a,(Q*a))
 end
