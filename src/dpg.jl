@@ -5,7 +5,22 @@ Structure with options to the DMP
 
 # Fields
 `σβ, αΘ, αw, αv, αu, γ, τ, iters, m, critic_update, λrls, stepreduce_interval, stepreduce_factor, hold_actor`\n
-The `cirtic_update` can be chosen as `:gradient`, `:rls`, `:kalman`
+
+`σβ` Exploration noise covariance
+`αΘ::Float64`\n Actor step size
+`αw::Float64`\n Q-function step size 1
+`αv::Float64`\n Q-function step size 2
+`αu::Float64`\n Currently not used
+`γ::Float64`\n Discount factor
+`τ::Float64`\n Tracking factor between target and training networks
+`iters::Int64`\n Number of iterations to run
+`m::Int64`\n Action dimension
+`critic_update::Symbol`\n How to update the critic, can be chosen as `:gradient`, `:rls`, `:kalman`
+`λrls::Float64`\n If rls is used for critic update, use this forgetting factor
+`stepreduce_interval::Int`\n The stepsize is reduced with this interval
+`stepreduce_factor::Float64`\n The stepsize is reduced with this factor
+`hold_actor::Int`\n Keep the actor from being updated for a few iterations in the beginning to allow the critic to obtain reasonable values
+
 See example file or the paper by Ijspeert et al. 2013
 """
 type DPGopts
@@ -46,7 +61,16 @@ type DPGfuns
     reward::Function
 end
 
-type DPGstate{T1,T2,T3}
+"""
+Structure which contains the parameters of the DPG optimization problem\n
+`Θ` parameters in the actor\n
+`w` parameters in the Q-function\n
+`v` parameters in the Q-function\n
+All parameters should be a subtype of AbstractVector
+A typical Q-function looks like `Q = (∇μ(s)*(a-μ(s)))'w + V(s,v)`
+
+"""
+type DPGstate{T1<:AbstractVector,T2<:AbstractVector,T3<:AbstractVector}
     Θ::T1
     w::T2
     v::T3
@@ -61,16 +85,18 @@ end
 
 
 """
-`cost, Θ, w, v = dpg(opts, funs, x0)`
+`cost, Θ, w, v = dpg(opts, funs, state0, x0)`
 
 Main function.
 
 # Arguments
 `opts::DPGopts` structure with options and parameters\n
 `funs::DPGfuns` structure with functions\n
-`x0` initial state
+`state0::DPGstate` initial parameters
+`x0` initial system state
 """
 function dpg(opts, funs, state0, x0)
+    println("=== Deterministic Policy Gradient ===")
     # Expand input structs
     σβ          = opts.σβ
     αΘ          = opts.αΘ
@@ -90,6 +116,7 @@ function dpg(opts, funs, state0, x0)
     simulate    = funs.simulate
     exploration = funs.exploration
     r           = funs.reward
+    println("Training using $critic_update")
 
     # Initialize parameters
     Θ           = state0.Θ # Weights
@@ -98,26 +125,24 @@ function dpg(opts, funs, state0, x0)
     Θt          = deepcopy(Θ) # Tracking weights
     wt          = deepcopy(w)
     vt          = deepcopy(v)
-    P,m         = size(Θ)
-    u           = zeros(P)
+    Pw          = size(Θ,1)
+    Pv          = size(v,1)
     Θb          = deepcopy(Θ) # Best weights
     wb          = deepcopy(w)
     vb          = deepcopy(v)
-    dΘs         = 1000ones(P,m) # Weight gradient states
-    dws         = 100ones(P)
-    dvs         = 100ones(P)
+    dΘs         = 1000ones(Pw) # Weight gradient states
+    dws         = 100ones(Pw)
+    dvs         = 100ones(Pv)
     cost        = zeros(iters)
     bestcost    = Inf
 
     # TODO: Make the parameters below part of the options
     if critic_update == :rls
-        Pw = 1eye(P)
-        Pv = 1eye(P)
-        Pvw = 0.1eye(2P)
+        Pvw = 0.1eye(Pw+Pv)
     elseif critic_update == :kalman
-        Pk = 10000eye(2P)
+        Pk = 10000eye(Pw+Pv)
         R2 = 1
-        R12 = 0.0ones(2P)
+        R12 = 0.0ones(Pw+Pv)
     end
 
     s = zeros(n)
@@ -140,25 +165,21 @@ function dpg(opts, funs, state0, x0)
             ri          = r(s1,a,ti)
             cost[i]    -= ri
             ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(s1,s,a1,a,Θ,w,v,ti)
-
-
-            # ϕu          = (∇vQ'u)[1]
-            dΘ         += ∇μ.*∇aQ # TODO: This line has been modified slightly from the paper to accomodate multidimensional control laws
-            y = ri + γ * Q(s1,a1,vt,wt,Θt,ti)
+            dΘ         += ∇μ*∇aQ
+            y           = ri + γ * Q(s1,a1,vt,wt,Θt,ti)
             if critic_update == :rls
-                vw,Pvw = RLS([v;w], y, [∇vQ;∇wQ], Pvw, λrls)
-                v,w = vw[1:P],vw[P+1:end]
+                vw,Pvw  = RLS([v;w], y, [∇vQ;∇wQ], Pvw, λrls)
+                v,w     = vw[1:Pv],vw[Pv+1:end]
             elseif critic_update == :kalman
                 Φ = [∇vQ;∇wQ]
                 # R1 = ΦΦ', to only update covariance in the direction of incoming data
                 vw,Pk = kalman(Φ*Φ',R2,R12,[v;w], y, Φ, Pk)
-                v,w = vw[1:P],vw[P+1:end]
+                v,w = vw[1:Pv],vw[Pv+1:end]
             else
                 δ           = (y - Q(s,a,v,w,Θ,ti))[1]
                 dw         += δ * ∇wQ  #- γ * ϕ(s1,a1) * ϕu
                 dv         += δ * ∇vQ   #- γ * ϕ(s1) * ϕu
             end
-            # u += αu * (δ - ϕu)*∇vQ
 
         end
 
@@ -197,6 +218,7 @@ function dpg(opts, funs, state0, x0)
                 wb = deepcopy(w)
                 vb = deepcopy(v)
             elseif cost[i] > 1.2bestcost
+                print_with_color(:orange,"Reducing stepsizes due to divergence")
                 αΘ  /= 10
                 αw  /= 10
                 αv  /= 10
@@ -207,6 +229,6 @@ function dpg(opts, funs, state0, x0)
         end
 
     end
-
+    println("Done. Minimum cost: $(minimum(cost[1:100:end])), ($(minimum(cost)))")
     return cost, Θb, wb, vb # Select the parameters with lowest cost
 end
