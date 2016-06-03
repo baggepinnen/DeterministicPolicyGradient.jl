@@ -70,7 +70,7 @@ All parameters should be a subtype of AbstractVector
 A typical Q-function looks like `Q = (∇μ(s)*(a-μ(s)))'w + V(s,v)`
 
 """
-type DPGstate{T<:AbstractVector,T2<:AbstractVector,T3<:AbstractVector}
+type DPGstate{T1<:AbstractVector,T2<:AbstractVector,T3<:AbstractVector}
     Θ::T1
     w::T2
     v::T3
