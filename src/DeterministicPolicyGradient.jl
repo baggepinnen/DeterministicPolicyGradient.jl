@@ -3,5 +3,6 @@ export DPGopts, DPGfuns, DPGstate, dpg, meshgrid, meshgrid2, get_centers_multi, 
 
 include("utilities.jl")
 include("dpg.jl")
+include("experience_replay.jl")
 
 end # module

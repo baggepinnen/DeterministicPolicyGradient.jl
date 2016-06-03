@@ -85,3 +85,34 @@ cost, Θ, w, v = dpg(opts, funs, initial_state, x0)
 opts = DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,:gradient,λrls,stepreduce_interval,stepreduce_factor,hold_actor)
 cost, Θ, w, v = dpg(opts, funs, initial_state, x0)
 @test minimum(cost) < 0.5cost[2]
+
+
+
+
+
+## Test experience replay
+using DeterministicPolicyGradient
+using Base.Test
+n = 2
+s = randn(n)
+s1 = randn(n)
+a = randn(n)
+r = randn()
+δ1 = 1.
+δ2 = 2.
+
+t1 = Transition(s,s1,a,r,δ1)
+t2 = Transition(s,s1,a,r,δ2)
+
+@test t1 < t2
+
+N = 3
+mem = ReplayMemory(N)
+
+push!(mem,t1)
+push!(mem,t2)
+@test length(mem.mem) == N
+@test Collections.isheap(mem.mem)
+
+tt = sample!(mem)
+@test tt.δ == 2.
