@@ -5,7 +5,22 @@ Structure with options to the DMP
 
 # Fields
 `σβ, αΘ, αw, αv, αu, γ, τ, iters, m, critic_update, λrls, stepreduce_interval, stepreduce_factor, hold_actor`\n
-The `cirtic_update` can be chosen as `:gradient`, `:rls`, `:kalman`
+
+`σβ` Exploration noise covariance
+`αΘ::Float64`\n Actor step size
+`αw::Float64`\n Q-function step size 1
+`αv::Float64`\n Q-function step size 2
+`αu::Float64`\n Currently not used
+`γ::Float64`\n Discount factor
+`τ::Float64`\n Tracking factor between target and training networks
+`iters::Int64`\n Number of iterations to run
+`m::Int64`\n Action dimension
+`critic_update::Symbol`\n How to update the critic, can be chosen as `:gradient`, `:rls`, `:kalman`
+`λrls::Float64`\n If rls is used for critic update, use this forgetting factor
+`stepreduce_interval::Int`\n The stepsize is reduced with this interval
+`stepreduce_factor::Float64`\n The stepsize is reduced with this factor
+`hold_actor::Int`\n Keep the actor from being updated for a few iterations in the beginning to allow the critic to obtain reasonable values
+
 See example file or the paper by Ijspeert et al. 2013
 """
 type DPGopts
@@ -51,10 +66,11 @@ Structure which contains the parameters of the DPG optimization problem\n
 `Θ` parameters in the actor\n
 `w` parameters in the Q-function\n
 `v` parameters in the Q-function\n
+All parameters should be a subtype of AbstractVector
 A typical Q-function looks like `Q = (∇μ(s)*(a-μ(s)))'w + V(s,v)`
 
 """
-type DPGstate{T1,T2,T3}
+type DPGstate{T<:AbstractVector,T2<:AbstractVector,T3<:AbstractVector}
     Θ::T1
     w::T2
     v::T3
@@ -111,13 +127,12 @@ function dpg(opts, funs, state0, x0)
     vt          = deepcopy(v)
     Pw          = size(Θ,1)
     Pv          = size(v,1)
-    u           = zeros(Pw)
     Θb          = deepcopy(Θ) # Best weights
     wb          = deepcopy(w)
     vb          = deepcopy(v)
     dΘs         = 1000ones(Pw) # Weight gradient states
     dws         = 100ones(Pw)
-    dvs         = 100ones(Pw)
+    dvs         = 100ones(Pv)
     cost        = zeros(iters)
     bestcost    = Inf
 
