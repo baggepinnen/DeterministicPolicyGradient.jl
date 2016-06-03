@@ -60,17 +60,18 @@ end
 end
 
 
-"""
-`cost, Θ, w, v = dpg(opts, funs, x0)`
-
-Main function.
-
-# Arguments
-`opts::DPGopts` structure with options and parameters\n
-`funs::DPGfuns` structure with functions\n
-`x0` initial state
-"""
+# """
+# `cost, Θ, w, v = dpg(opts, funs, x0)`
+#
+# Main function.
+#
+# # Arguments
+# `opts::DPGopts` structure with options and parameters\n
+# `funs::DPGfuns` structure with functions\n
+# `x0` initial state
+# """
 function dpg(opts, funs, state0, x0)
+    println("=== Deterministic Policy Gradient ===")
     # Expand input structs
     σβ          = opts.σβ
     αΘ          = opts.αΘ
@@ -90,6 +91,7 @@ function dpg(opts, funs, state0, x0)
     simulate    = funs.simulate
     exploration = funs.exploration
     r           = funs.reward
+    println("Training using $critic_update")
 
     # Initialize parameters
     Θ           = state0.Θ # Weights
@@ -98,26 +100,25 @@ function dpg(opts, funs, state0, x0)
     Θt          = deepcopy(Θ) # Tracking weights
     wt          = deepcopy(w)
     vt          = deepcopy(v)
-    P,m         = size(Θ)
-    u           = zeros(P)
+    Pw          = size(Θ,1)
+    Pv          = size(v,1)
+    u           = zeros(Pw)
     Θb          = deepcopy(Θ) # Best weights
     wb          = deepcopy(w)
     vb          = deepcopy(v)
-    dΘs         = 1000ones(P,m) # Weight gradient states
-    dws         = 100ones(P)
-    dvs         = 100ones(P)
+    dΘs         = 1000ones(Pw) # Weight gradient states
+    dws         = 100ones(Pw)
+    dvs         = 100ones(Pw)
     cost        = zeros(iters)
     bestcost    = Inf
 
     # TODO: Make the parameters below part of the options
     if critic_update == :rls
-        Pw = 1eye(P)
-        Pv = 1eye(P)
-        Pvw = 0.1eye(2P)
+        Pvw = 0.1eye(Pw+Pv)
     elseif critic_update == :kalman
-        Pk = 10000eye(2P)
+        Pk = 10000eye(Pw+Pv)
         R2 = 1
-        R12 = 0.0ones(2P)
+        R12 = 0.0ones(Pw+Pv)
     end
 
     s = zeros(n)
@@ -140,25 +141,21 @@ function dpg(opts, funs, state0, x0)
             ri          = r(s1,a,ti)
             cost[i]    -= ri
             ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(s1,s,a1,a,Θ,w,v,ti)
-
-
-            # ϕu          = (∇vQ'u)[1]
-            dΘ         += ∇μ.*∇aQ # TODO: This line has been modified slightly from the paper to accomodate multidimensional control laws
-            y = ri + γ * Q(s1,a1,vt,wt,Θt,ti)
+            dΘ         += ∇μ*∇aQ
+            y           = ri + γ * Q(s1,a1,vt,wt,Θt,ti)
             if critic_update == :rls
-                vw,Pvw = RLS([v;w], y, [∇vQ;∇wQ], Pvw, λrls)
-                v,w = vw[1:P],vw[P+1:end]
+                vw,Pvw  = RLS([v;w], y, [∇vQ;∇wQ], Pvw, λrls)
+                v,w     = vw[1:Pv],vw[Pv+1:end]
             elseif critic_update == :kalman
                 Φ = [∇vQ;∇wQ]
                 # R1 = ΦΦ', to only update covariance in the direction of incoming data
                 vw,Pk = kalman(Φ*Φ',R2,R12,[v;w], y, Φ, Pk)
-                v,w = vw[1:P],vw[P+1:end]
+                v,w = vw[1:Pv],vw[Pv+1:end]
             else
                 δ           = (y - Q(s,a,v,w,Θ,ti))[1]
                 dw         += δ * ∇wQ  #- γ * ϕ(s1,a1) * ϕu
                 dv         += δ * ∇vQ   #- γ * ϕ(s1) * ϕu
             end
-            # u += αu * (δ - ϕu)*∇vQ
 
         end
 
@@ -197,6 +194,7 @@ function dpg(opts, funs, state0, x0)
                 wb = deepcopy(w)
                 vb = deepcopy(v)
             elseif cost[i] > 1.2bestcost
+                print_with_color(:orange,"Reducing stepsizes due to divergence")
                 αΘ  /= 10
                 αw  /= 10
                 αv  /= 10
@@ -207,6 +205,6 @@ function dpg(opts, funs, state0, x0)
         end
 
     end
-
+    println("Done. Minimum cost: $(minimum(cost[1:100:end])), ($(minimum(cost)))")
     return cost, Θb, wb, vb # Select the parameters with lowest cost
 end
