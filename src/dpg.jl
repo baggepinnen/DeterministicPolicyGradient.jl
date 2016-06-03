@@ -46,6 +46,14 @@ type DPGfuns
     reward::Function
 end
 
+"""
+Structure which contains the parameters of the DPG optimization problem\n
+`Θ` parameters in the actor\n
+`w` parameters in the Q-function\n
+`v` parameters in the Q-function\n
+A typical Q-function looks like `Q = (∇μ(s)*(a-μ(s)))'w + V(s,v)`
+
+"""
 type DPGstate{T1,T2,T3}
     Θ::T1
     w::T2
@@ -60,16 +68,17 @@ end
 end
 
 
-# """
-# `cost, Θ, w, v = dpg(opts, funs, x0)`
-#
-# Main function.
-#
-# # Arguments
-# `opts::DPGopts` structure with options and parameters\n
-# `funs::DPGfuns` structure with functions\n
-# `x0` initial state
-# """
+"""
+`cost, Θ, w, v = dpg(opts, funs, state0, x0)`
+
+Main function.
+
+# Arguments
+`opts::DPGopts` structure with options and parameters\n
+`funs::DPGfuns` structure with functions\n
+`state0::DPGstate` initial parameters
+`x0` initial system state
+"""
 function dpg(opts, funs, state0, x0)
     println("=== Deterministic Policy Gradient ===")
     # Expand input structs

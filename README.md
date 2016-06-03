@@ -19,6 +19,7 @@ See file `second_order_sys.jl`, which requires `Plots.jl` and `PyPlot.jl` to dis
 ```julia
 using ControlSystems
 using DeterministicPolicyGradient
+import PyPlot
 
 try
   close("all")
@@ -82,7 +83,7 @@ Q(s,a,v,w,Θ,t)    = (ϕ(s,a,Θ)'w + V(s,v))[1]
 function gradients(s1,s,a1,a,Θ,w,v,t)
     ϕi = ϕ(s)
     ∇μ = ϕi
-    ∇aQ = w'∇μ
+    ∇aQ = ∇μ'w
     ∇wQ = ∇μ*(a-Θ'ϕi)
     ∇vQ = ϕi
     ∇aQ, ∇wQ, ∇vQ, ∇μ
@@ -92,8 +93,8 @@ simulate(Θ,x0) = lsim(G, (t,s)->μ(s,Θ,t), t, x0)[3:4]
 exploration(σβ) = filt(ones(5),[5],σβ*randn(T))
 funs            = DPGfuns(μ,Q, gradients, simulate, exploration, r)
 
-Θ               = zeros(P,m) # Weights
-w               = 0.001randn(P)
+Θ               = zeros(P*m) # Weights
+w               = 0.001randn(P*m)
 v               = 0.001randn(P)
 initial_state   = DPGstate(Θ,w,v)
 

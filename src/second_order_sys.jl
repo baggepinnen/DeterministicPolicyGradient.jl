@@ -60,16 +60,16 @@ function ϕ(s)
     # [a; s[2]]
 end
 
-μ(s,Θ,t)          = Θ'ϕ(s)
+μ(s,Θ,t)        = Θ'ϕ(s)
 ∇μ(s)           = ϕ(s)
 β(s,Θ,noise,i)  = Θ'ϕ(s) + noise[i]
 ϕ(s,a,Θ)        = ∇μ(s)*(a-μ(s,Θ,t))
 V(s,v)          = v'ϕ(s) # It's a good idea to bias V to some mean of the final landscape
-Q(s,a,v,w,Θ,t)    = (ϕ(s,a,Θ)'w + V(s,v))[1]
+Q(s,a,v,w,Θ,t)  = (ϕ(s,a,Θ)'w + V(s,v))[1]
 
 function gradients(s1,s,a1,a,Θ,w,v,t)
     ∇μ = ϕ(s)
-    ∇aQ = w'∇μ
+    ∇aQ = ∇μ'w
     ∇wQ = ∇μ*(a-Θ'∇μ)
     ∇vQ = ∇μ
     ∇aQ, ∇wQ, ∇vQ, ∇μ
