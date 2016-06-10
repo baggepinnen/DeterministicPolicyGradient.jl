@@ -100,19 +100,24 @@ a = randn(n)
 r = randn()
 δ1 = 1.
 δ2 = 2.
+δ3 = 3.
 
 t1 = Transition(s,s1,a,r,δ1)
 t2 = Transition(s,s1,a,r,δ2)
+t3 = Transition(s,s1,a,r,δ3)
 
 @test t1 < t2
 
 N = 3
 mem = ReplayMemory(N)
 
-push!(mem,t1)
 push!(mem,t2)
+push!(mem,t1)
+push!(mem,t3)
 @test length(mem.mem) == N
-@test Collections.isheap(mem.mem)
+@test Collections.isheap(mem.mem, Base.Order.Reverse)
+sort!(mem)
+@test Collections.isheap(mem.mem, Base.Order.Reverse)
 
-tt = sample!(mem)
-@test tt.δ == 2.
+tt = sample_greedy!(mem)
+@test tt.δ == 3.

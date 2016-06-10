@@ -1,10 +1,10 @@
 r5(x) = round(x,5)
-
+const b = Beta(1,5)
 
 import Base.Collections: heapify, heapify!, heappush!, heappop!
-import Base: isless, zero, push!, show, display
+import Base: isless, zero, push!, show, display, getindex, sort!
 
-export Transition, ReplayMemory, sample!, push!
+export Transition, ReplayMemory, sample!, push!, sort!
 
 type Transition
     s::Vector{Float64}
@@ -18,14 +18,18 @@ display(t::Transition) = println("s: ", string(r5(t.s)), " s1: ", string(r5(t.s1
 show(t::Transition) = display(t)
 
 isless(t1::Transition,t2::Transition) = isless(abs(t1.δ),abs(t2.δ))
-zero(Transition) = Transition([0.],[0.],[0.],0.,0.)
+zero(Transition) = Transition([0.],[0.],[0.],0.,-Inf)
 
 
 type ReplayMemory
     mem::Vector{Transition}
     s::Int
-    ReplayMemory(s::Int) = new(zeros(Transition,s),s)
+    rs::Float64
+    ReplayMemory(s::Int) = new(zeros(Transition,s),s, sum(1./(1:s)))
 end
+
+getindex(mem::ReplayMemory, ind) = mem.mem[n]
+sort!(mem::ReplayMemory) = sort!(mem.mem,rev=true)
 
 function display(mem::ReplayMemory)
     map(display,mem.mem)
@@ -33,11 +37,19 @@ function display(mem::ReplayMemory)
 end
 
 function push!(mem::ReplayMemory, t::Transition)
-    heappop!(mem.mem)
-    heappush!(mem.mem, t)
+    heappush!(mem.mem, t, Base.Order.Reverse)
+    pop!(mem.mem)
     nothing
 end
 
-function sample!(mem::ReplayMemory)
-    heappop!(mem.mem, ) # TODO: check ordering
+function sample_greedy!(mem::ReplayMemory)
+    # heappop!(mem.mem, Base.Order.Reverse)
+    mem[1]
+end
+
+function sample_beta!(mem::ReplayMemory)
+    s = mem.s
+    rs = mem.rs
+    ind = ceil(Int,s*rand(b))
+    mem[ind]
 end
