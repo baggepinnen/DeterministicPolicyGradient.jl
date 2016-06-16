@@ -22,7 +22,7 @@ L = lqr(ss(G),Q1,Q2)
 
 # Initialize solver options ==========================================
 σβ                  = 2
-αΘ                  = 0.01
+αΘ                  = 0.005
 αw                  = 0.01
 αv                  = 0.01
 αu                  = 0.01
@@ -31,10 +31,11 @@ L = lqr(ss(G),Q1,Q2)
 iters               = 2_000
 critic_update       = :rls
 λrls                = 0.99999
-stepreduce_interval = 5000
+stepreduce_interval = 100
 stepreduce_factor   = 0.995
 hold_actor          = 100
-opts = DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,critic_update,λrls,stepreduce_interval,stepreduce_factor,hold_actor)
+experience_replay   = 1000
+opts = DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,critic_update,λrls,stepreduce_interval,stepreduce_factor,hold_actor,experience_replay)
 
 
 # Initialize functions      ==========================================
@@ -78,11 +79,11 @@ initial_state   = DPGstate(Θ,w,v)
 cost, Θ, w, v = dpg(opts, funs, initial_state, x0)
 @test minimum(cost) < 0.4cost[2]
 
-opts = DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,:kalman,λrls,stepreduce_interval,stepreduce_factor,hold_actor)
+opts = DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,:kalman,λrls,stepreduce_interval,stepreduce_factor,hold_actor,experience_replay)
 cost, Θ, w, v = dpg(opts, funs, initial_state, x0)
 @test minimum(cost) < 0.4cost[2]
 
-opts = DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,:gradient,λrls,stepreduce_interval,stepreduce_factor,hold_actor)
+opts = DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,:gradient,λrls,stepreduce_interval,stepreduce_factor,hold_actor,experience_replay)
 cost, Θ, w, v = dpg(opts, funs, initial_state, x0)
 @test minimum(cost) < 0.5cost[2]
 
@@ -102,9 +103,9 @@ r = randn()
 δ2 = 2.
 δ3 = 3.
 
-t1 = Transition(s,s1,a,r,δ1)
-t2 = Transition(s,s1,a,r,δ2)
-t3 = Transition(s,s1,a,r,δ3)
+t1 = Transition(s,s1,a,r,δ1,1)
+t2 = Transition(s,s1,a,r,δ2,2)
+t3 = Transition(s,s1,a,r,δ3,3)
 
 @test t1 < t2
 
