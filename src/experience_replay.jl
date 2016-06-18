@@ -2,7 +2,7 @@ r5(x) = round(x,5)
 const b = Beta(1,5)
 
 import Base.Collections: heapify, heapify!, heappush!, heappop!
-import Base: isless, zero, push!, show, display, getindex, setindex!, sort!, length
+import Base: isless, zero, push!, show, display, getindex, setindex!, sort!, length, start, next, done
 
 export Transition, ReplayMemory,SequentialReplayMemory,SortedReplayMemory, sample_greedy!, sample_beta!, sample_uniform!, push!, delete_and_push!, sort!, setindex!
 
@@ -41,6 +41,13 @@ type SequentialReplayMemory <: ReplayMemory
     SequentialReplayMemory(s::Int) = new(Vector{Transition}(s),s,0, false,Int[])
 end
 
+start(mem::ReplayMemory) = start(mem.mem)
+next(mem::ReplayMemory,i) = next(mem.mem,i)
+done(mem::SortedReplayMemory,i) = done(mem.mem,i)
+done(mem::SequentialReplayMemory,i) = (mem._filled ? mem.s : mem._i) < i
+
+
+
 display(mem::ReplayMemory) = map(display,mem.mem)
 show(t::Transition) = map(display,mem.mem)
 
@@ -54,7 +61,8 @@ function display(mem::ReplayMemory)
     nothing
 end
 
-length(mem::ReplayMemory) = length(mem.mem)
+length(mem::SortedReplayMemory) = length(mem.mem)
+length(mem::SequentialReplayMemory) = mem._filled ? mem.s : mem._i
 
 function push!(mem::SortedReplayMemory, t::Transition)
     if length(mem) >= mem.s

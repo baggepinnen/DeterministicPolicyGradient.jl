@@ -134,9 +134,9 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
     Θb          = deepcopy(Θ) # Best weights
     wb          = deepcopy(w)
     vb          = deepcopy(v)
-    dΘs         = 1000ones(Pw) # Weight gradient states
-    dws         = 100ones(Pw)
-    dvs         = 100ones(Pv)
+    dΘs         = 10ones(Pw) # Weight gradient states
+    dws         = 1ones(Pw)
+    dvs         = 1ones(Pv)
     cost        = zeros(iters)
     bestcost    = Inf
 
@@ -155,22 +155,39 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
 
     s = zeros(n)
 
-    function train!(tvec, update_actor)
+    function train!(tvec, update_actor,update_critic=true)
         dΘ,dw,dv = zeros(Θ),zeros(w),zeros(v)
+        if critic_update ==:leastsquares && update_critic
+            A = Matrix{Float64}(length(mem),Pv+Pw)
+            targets = Vector{Float64}(length(mem))
+            for (it,t) in enumerate(mem)
+                a1          = μ(t.s1,Θ,t.t)
+                ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t)
+                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t)
+                targets[it] = y
+                t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1]
+                A[it,1:Pv]  = ∇vQ
+                A[it,Pv+1:end]  = ∇wQ
+            end
+            vw = [A; 1e-4eye(Pv+Pw)]\[targets;zeros(Pv+Pw)]
+            v[:],w[:] = vw[1:Pv],vw[Pv+1:end]
+        end
         for t in tvec
             a1          = μ(t.s1,Θ,t.t)
             ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t)
-            y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t)
-            t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1]
             if critic_update == :rls
+                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t)
+                t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1]
                 vw,Pvw  = RLS([v;w], y, [∇vQ;∇wQ], Pvw, λrls)
                 v[:],w[:]     = vw[1:Pv],vw[Pv+1:end]
             elseif critic_update == :kalman
+                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t)
+                t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1]
                 Φ = [∇vQ;∇wQ]
                 # R1 = ΦΦ', to only update covariance in the direction of incoming data
                 vw,Pk = kalman(Φ*Φ',R2,R12,[v;w], y, Φ, Pk)
                 v[:],w[:] = vw[1:Pv],vw[Pv+1:end]
-            else
+            elseif critic_update ==:gradient
                 dw += t.δ * ∇wQ  #- γ * ϕ(s1,a1) * ϕu
                 dv += t.δ * ∇vQ   #- γ * ϕ(s1) * ϕu
             end
@@ -197,9 +214,6 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
 
     # Main loop ================================================================
     for i = 1:iters
-        if i == 20
-            critic_update = :gradient
-        end
         x0i         = x0 #+ 2randn(n) # TODO: this should not be hard coded
         noise       = exploration(σβ)
         x,uout      = simulate(Θ, x0i, noise)
@@ -224,17 +238,16 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
         end
 
         if opts.experience_replay > 0 && i > 10
-            for ei = 1:min(2i,opts.experience_replay)#
-                # trans = i < opts.experience_replay ? sample_greedy!(mem) : sample_beta!(mem)
+            for ei = 1:min(2i,100)
                 trans = sample_uniform!(mem,T-1)
-                train!(trans, i > opts.hold_actor)
+                train!(trans, i > opts.hold_actor, ei-1 % 20 == 0)
                 push!(mem, trans)
             end
             ((i % 50) == 0) && sort!(mem)
         end
 
         if (i-1) % 10 == 0 # Simulate without noise and evaluate cost # TODO: remove hard coded 100
-            x,uout = simulate(Θ, x0) # TODO: changed to Θt to try
+            x,uout = simulate(Θ, x0) # Evaluate using latest parameters and possibly revert back to tracking parameters
             cost[i] = J(x,uout,r)
             progressfun(Θ,w,v,i,x,uout, cost)
             if critic_update == :gradient
@@ -245,19 +258,19 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
             if cost[i] < bestcost
                 bestcost = cost[i]
                 # TODO: changed to saveing tracking networks, to be more likely to escape local minima
-                Θb = deepcopy(Θt)
-                wb = deepcopy(wt)
-                vb = deepcopy(vt)
+                Θb = deepcopy(Θ)
+                wb = deepcopy(w)
+                vb = deepcopy(v)
                 # writecsv("savestate_Θ",Θb)
                 # writecsv("savestate_w",wb)
                 # writecsv("savestate_v",vb)
 
-            elseif cost[i] > 1.01bestcost
+            elseif cost[i] > 1.5bestcost
                 print_with_color(:orange,"Reducing stepsizes due to divergence\n")
-                αΘ  /= 10
-                αw  /= 10
-                αv  /= 10
-                αu  /= 10
+                αΘ  /= 5
+                αw  /= 5
+                αv  /= 5
+                αu  /= 5
                 σβ ./= 2
                 Θ, w, v = deepcopy(Θb), deepcopy(wb), deepcopy(vb) # reset parameters
             end
