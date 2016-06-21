@@ -39,10 +39,33 @@ immutable DPGopts
     stepreduce_factor::Float64
     hold_actor::Int
     experience_replay::Int
+    experience_ratio::Int
+    momentum::Float64
+    rmsprop::Bool
+    rmspropfactor::Float64
+    critic_update_interval::Int
 end
 
-DPGopts(m;σβ=1.,αΘ=0.0001,αw=0.001,αv=0.001,αu=0.001,γ=0.99,τ=0.001,iters=20_000, critic_update=:gradient,λrls=0.999,stepreduce_interval=1000,stepreduce_factor=0.995,hold_actor=1000,experience_replay=0) =
-DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,critic_update,λrls,stepreduce_interval,stepreduce_factor,hold_actor,experience_replay)
+DPGopts(m;σβ=1.,
+αΘ=0.0001,
+αw=0.001,
+αv=0.001,
+αu=0.001,
+γ=0.99,
+τ=0.001,
+iters=20_000,
+critic_update=:gradient,
+λrls=0.999,
+stepreduce_interval=1000,
+stepreduce_factor=0.995,
+hold_actor=1000,
+experience_replay=0,
+experience_ratio=10,
+momentum=0.9,
+rmsprop=true,
+rmspropfactor=0.9,
+critic_update_interval=1) =
+DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,critic_update,λrls,stepreduce_interval,stepreduce_factor,hold_actor,experience_replay,experience_ratio,momentum,rmsprop,rmspropfactor,critic_update_interval)
 
 """
 Structure with functions to pass to the DMP
@@ -96,7 +119,7 @@ end
 # `state0::DPGstate` initial parameters
 # `x0` initial system state
 # """
-function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
+function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
     println("=== Deterministic Policy Gradient ===")
     # Expand input structs
     σβ          = opts.σβ
@@ -134,9 +157,10 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
     Θb          = deepcopy(Θ) # Best weights
     wb          = deepcopy(w)
     vb          = deepcopy(v)
-    dΘs         = 10ones(Pw) # Weight gradient states
-    dws         = 1ones(Pw)
-    dvs         = 1ones(Pv)
+    dΘs         = 0.0001ones(Pw) # Weight gradient states
+    dΘs2        = 0.0001ones(Pw)
+    dws         = ones(Pw)
+    dvs         = ones(Pv)
     cost        = zeros(iters)
     bestcost    = Inf
 
@@ -158,31 +182,35 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
     function train!(tvec, update_actor,update_critic=true)
         dΘ,dw,dv = zeros(Θ),zeros(w),zeros(v)
         if critic_update ==:leastsquares && update_critic
+            basis = sample_uniform!(mem,Pv)
+            for (it,t) in enumerate(basis)
+                C[:,it] = t.s
+            end
             A = Matrix{Float64}(length(mem),Pv+Pw)
             targets = Vector{Float64}(length(mem))
             for (it,t) in enumerate(mem)
                 a1          = μ(t.s1,Θ,t.t)
-                ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t)
-                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t)
+                ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t,C)
+                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
                 targets[it] = y
-                t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1]
+                # t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1] # Not needed for batch learning
                 A[it,1:Pv]  = ∇vQ
                 A[it,Pv+1:end]  = ∇wQ
             end
-            vw = [A; 1e-4eye(Pv+Pw)]\[targets;zeros(Pv+Pw)]
+            vw = [A; 1e-2eye(Pv+Pw)]\[targets;zeros(Pv+Pw)]
             v[:],w[:] = vw[1:Pv],vw[Pv+1:end]
         end
         for t in tvec
-            a1          = μ(t.s1,Θ,t.t)
-            ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t)
+            a1          = μ(t.s1,Θt,t.t)
+            ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t,C)
             if critic_update == :rls
-                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t)
-                t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1]
+                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
+                t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t,C))[1]
                 vw,Pvw  = RLS([v;w], y, [∇vQ;∇wQ], Pvw, λrls)
                 v[:],w[:]     = vw[1:Pv],vw[Pv+1:end]
             elseif critic_update == :kalman
-                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t)
-                t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1]
+                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
+                t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t,C))[1]
                 Φ = [∇vQ;∇wQ]
                 # R1 = ΦΦ', to only update covariance in the direction of incoming data
                 vw,Pk = kalman(Φ*Φ',R2,R12,[v;w], y, Φ, Pk)
@@ -193,21 +221,28 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
             end
             dΘ += ∇μ*∇aQ
         end
+        dΘ./= length(tvec)
         # RMS prop update parameters (gradient divided by running average of RMS gradient, see. http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf
         if update_actor
-            dΘs[:] = 0.9dΘs + 0.1dΘ.^2
-            Θ[:]  += αΘ/T * dΘ./(sqrt(dΘs)+0.0000001)
+            ΔΘ = αΘ * dΘ
+            if opts.rmsprop
+                dΘs[:] = opts.rmspropfactor*dΘs + (1-opts.rmspropfactor)*dΘ.^2
+                ΔΘ ./= sqrt(dΘs+1e-10) # RMSprop
+            end
+            # ΔΘ = dΘ./sqrt(dΘs+1e-10).*sqrt(dΘs2) # ADAdelta
+            # dΘs2[:] = 0.9dΘs2 + 0.1ΔΘ.^2 # ADAdelta
+            dΘs2 = opts.momentum*dΘs2 + ΔΘ # Momentum + RMSProp
+            Θ[:]  += dΘs2
         end
         if critic_update == :gradient
-            dws[:] = 0.9dws + 0.1dw.^2
-            dvs[:] = 0.9dvs + 0.1dv.^2
-            w += αw/T * dw./(sqrt(dws)+0.00000001)
-            v += αv/T * dv./(sqrt(dvs)+0.00000001)
+            dws[:] = opts.rmspropfactor*dws + (1-opts.rmspropfactor)*dw.^2
+            dvs[:] = opts.rmspropfactor*dvs + (1-opts.rmspropfactor)*dv.^2
+            w += αw/T * dw./(sqrt(dws)+1e-8)
+            v += αv/T * dv./(sqrt(dvs)+1e-8)
         end
 
         # Update tracking networks
-        τΘ = 0.01
-        Θt[:], wt[:], vt[:] = τΘ*Θ + (1-τΘ)*Θt, τ*w + (1-τ)*wt, τ*v + (1-τ)*vt
+        Θt[:], wt[:], vt[:] = τ*Θ + (1-τ)*Θt, τ*w + (1-τ)*wt, τ*v + (1-τ)*vt
         nothing
     end
     tc = 0
@@ -238,9 +273,9 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
         end
 
         if opts.experience_replay > 0 && i > 10
-            for ei = 1:min(2i,100)
+            for ei = 1:opts.experience_ratio
                 trans = sample_uniform!(mem,T-1)
-                train!(trans, i > opts.hold_actor, ei-1 % 20 == 0)
+                train!(trans, i > opts.hold_actor, ei-1 % opts.critic_update_interval == 0)
                 push!(mem, trans)
             end
             ((i % 50) == 0) && sort!(mem)
@@ -249,7 +284,7 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
         if (i-1) % 10 == 0 # Simulate without noise and evaluate cost # TODO: remove hard coded 100
             x,uout = simulate(Θ, x0) # Evaluate using latest parameters and possibly revert back to tracking parameters
             cost[i] = J(x,uout,r)
-            progressfun(Θ,w,v,i,x,uout, cost)
+            progressfun(Θ,w,v,C,i,x,uout, cost)
             if critic_update == :gradient
                 println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5, " norm ∇w: ", Σ½(dws) |> r5, " norm ∇v: ", Σ½(dvs) |> r5)#, " trace(P): ", trace(Pvw) |> r5)
             else
@@ -261,9 +296,6 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,w,v,i,s,u, cost)->0)
                 Θb = deepcopy(Θ)
                 wb = deepcopy(w)
                 vb = deepcopy(v)
-                # writecsv("savestate_Θ",Θb)
-                # writecsv("savestate_w",wb)
-                # writecsv("savestate_v",vb)
 
             elseif cost[i] > 1.5bestcost
                 print_with_color(:orange,"Reducing stepsizes due to divergence\n")
