@@ -4,24 +4,31 @@
 Structure with options to the DMP
 
 # Fields
-`σβ, αΘ, αw, αv, αu, γ, τ, iters, m, critic_update, λrls, stepreduce_interval, stepreduce_factor, hold_actor`\n
 
-`σβ` Exploration noise covariance
-`αΘ::Float64`\n Actor step size
-`αw::Float64`\n Q-function step size 1
-`αv::Float64`\n Q-function step size 2
-`αu::Float64`\n Currently not used
-`γ::Float64`\n Discount factor
-`τ::Float64`\n Tracking factor between target and training networks
-`iters::Int64`\n Number of iterations to run
-`m::Int64`\n Action dimension
-`critic_update::Symbol`\n How to update the critic, can be chosen as `:gradient`, `:rls`, `:kalman`
-`λrls::Float64`\n If rls is used for critic update, use this forgetting factor
-`stepreduce_interval::Int`\n The stepsize is reduced with this interval
-`stepreduce_factor::Float64`\n The stepsize is reduced with this factor
-`hold_actor::Int`\n Keep the actor from being updated for a few iterations in the beginning to allow the critic to obtain reasonable values
-
-See example file or the paper by Ijspeert et al. 2013
+`σβ` Exploration noise covariance\n
+`αΘ::Float64` Actor step size\n
+`αw::Float64` Q-function step size 1\n
+`αv::Float64` Q-function step size 2\n
+`αu::Float64` Currently not used\n
+`γ::Float64` Discount factor\n
+`τ::Float64` Tracking factor between target and training networks\n
+`λ::Float64` Regularization parameter for leastsquares Q-function fitting\n
+`iters::Int64` Number of iterations to run\n
+`m::Int64` Action dimension\n
+`critic_update::Symbol` How to update the critic, can be chosen as `:gradient`, `:rls`, `:kalman`, `:leastsquares`\n
+`λrls::Float64` If rls is used for critic update, use this forgetting factor\n
+`stepreduce_interval::Int` The stepsize is reduced with this interval\n
+`stepreduce_factor::Float64` The stepsize is reduced with this factor\n
+`hold_actor::Int` Keep the actor from being updated for a few iterations in the beginning to allow the critic to obtain reasonable values\n
+`experience_replay::Int` How many transitions to store in the replay buffer\n
+`experience_ratio::Int` How many stored transitions to train with for every new experience\n
+`momentum::Float64` Momentum term in actor gradient ascent (0.9)\n
+`rmsprop::Bool` Use rmsprop for gradient training\n
+`rmspropfactor::Float64` How much rmsprop, (0.9)\n
+`critic_update_interval::Int` If critic is trained using leastsquares, only relearn the critic between this many mini-batches\n
+`eval_interval::Int` With this interval the policy is evaluated without noise, parameters saved and stepsizes are reduced if divergence is detected.\n
+`divergence_threshold::Float64` If the cost is higher than `divergence_threshold*bestcost`, the parameters are reset to their previously best values and stepsizes are reduced.\n
+See example file or the paper Deterministic Policy Gradient Algorithms, Silver et al. 2014
 """
 immutable DPGopts
     σβ
@@ -31,6 +38,7 @@ immutable DPGopts
     αu::Float64
     γ::Float64
     τ::Float64
+    λ::Float64
     iters::Int64
     m::Int64
     critic_update::Symbol
@@ -44,15 +52,19 @@ immutable DPGopts
     rmsprop::Bool
     rmspropfactor::Float64
     critic_update_interval::Int
+    eval_interval::Int
+    divergence_threshold::Float64
 end
 
-DPGopts(m;σβ=1.,
-αΘ=0.0001,
-αw=0.001,
-αv=0.001,
+DPGopts(m;
+σβ=1.,
+αΘ=0.001,
+αw=0.01,
+αv=0.01,
 αu=0.001,
 γ=0.99,
 τ=0.001,
+λ=1e-4,
 iters=20_000,
 critic_update=:gradient,
 λrls=0.999,
@@ -64,8 +76,10 @@ experience_ratio=10,
 momentum=0.9,
 rmsprop=true,
 rmspropfactor=0.9,
-critic_update_interval=1) =
-DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,iters,m,critic_update,λrls,stepreduce_interval,stepreduce_factor,hold_actor,experience_replay,experience_ratio,momentum,rmsprop,rmspropfactor,critic_update_interval)
+critic_update_interval=1,
+eval_interval=10,
+divergence_threshold=1.5) =
+DPGopts(σβ,αΘ,αw,αv,αu,γ,τ,λ,iters,m,critic_update,λrls,stepreduce_interval,stepreduce_factor,hold_actor,experience_replay,experience_ratio,momentum,rmsprop,rmspropfactor,critic_update_interval,eval_interval,divergence_threshold)
 
 """
 Structure with functions to pass to the DMP
@@ -186,6 +200,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
             for (it,t) in enumerate(basis)
                 C[:,it] = t.s
             end
+            push!(mem,basis)
             A = Matrix{Float64}(length(mem),Pv+Pw)
             targets = Vector{Float64}(length(mem))
             for (it,t) in enumerate(mem)
@@ -197,7 +212,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
                 A[it,1:Pv]  = ∇vQ
                 A[it,Pv+1:end]  = ∇wQ
             end
-            vw = [A; 1e-2eye(Pv+Pw)]\[targets+100;zeros(Pv+Pw)]
+            vw = [A; opts.λ*eye(Pv+Pw)]\[targets+100;zeros(Pv+Pw)]
             v[:],w[:] = vw[1:Pv],vw[Pv+1:end]
         end
         for t in tvec
@@ -206,8 +221,8 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
             if critic_update == :rls
                 y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
                 t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t,C))[1]
-                vw,Pvw  = RLS([v;w], y, [∇vQ;∇wQ], Pvw, λrls)
-                v[:],w[:]     = vw[1:Pv],vw[Pv+1:end]
+                vw,Pvw      = RLS([v;w], y, [∇vQ;∇wQ], Pvw, λrls)
+                v[:],w[:]   = vw[1:Pv],vw[Pv+1:end]
             elseif critic_update == :kalman
                 y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
                 t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t,C))[1]
@@ -281,7 +296,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
             ((i % 50) == 0) && sort!(mem)
         end
 
-        if (i-1) % 10 == 0 # Simulate without noise and evaluate cost # TODO: remove hard coded 100
+        if (i-1) % opts.eval_interval == 0 # Simulate without noise and evaluate cost
             x,uout = simulate(Θ, x0) # Evaluate using latest parameters and possibly revert back to tracking parameters
             cost[i] = J(x,uout,r)
             progressfun(Θ,w,v,C,i,x,uout, cost)
@@ -297,7 +312,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
                 wb = deepcopy(w)
                 vb = deepcopy(v)
 
-            elseif cost[i] > 1.5bestcost
+            elseif cost[i] > opts.divergence_threshold*bestcost
                 print_with_color(:orange,"Reducing stepsizes due to divergence\n")
                 αΘ  /= 5
                 αw  /= 5
@@ -311,5 +326,5 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
 
     end
     println("Done. Minimum cost: $(minimum(cost[1:10:end])), ($(minimum(cost)))")
-    return cost, Θb, wb, vb # Select the parameters with lowest cost
+    return cost, Θb, wb, vb, mem # Select the parameters with lowest cost
 end

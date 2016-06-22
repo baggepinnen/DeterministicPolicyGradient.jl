@@ -48,7 +48,8 @@ done(mem::SequentialReplayMemory,i) = (mem._filled ? mem.s : mem._i) < i
 
 
 
-display(mem::ReplayMemory) = map(display,mem.mem)
+display(mem::SortedReplayMemory) = map(display,mem.mem)
+display(mem::SequentialReplayMemory) = mem._filled ? map(display,mem.mem) : [display(mem[i]) for i = 1:mem._i]
 show(t::Transition) = map(display,mem.mem)
 
 getindex(mem::ReplayMemory, ind) = mem.mem[ind]
