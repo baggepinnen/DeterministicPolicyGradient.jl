@@ -158,7 +158,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
     wb          = deepcopy(w)
     vb          = deepcopy(v)
     dΘs         = 0.0001ones(Pw) # Weight gradient states
-    dΘs2        = 0.0001ones(Pw)
+    dΘs2        = 0*ones(Pw)
     dws         = ones(Pw)
     dvs         = ones(Pv)
     cost        = zeros(iters)
@@ -197,7 +197,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
                 A[it,1:Pv]  = ∇vQ
                 A[it,Pv+1:end]  = ∇wQ
             end
-            vw = [A; 1e-2eye(Pv+Pw)]\[targets;zeros(Pv+Pw)]
+            vw = [A; 1e-2eye(Pv+Pw)]\[targets+100;zeros(Pv+Pw)]
             v[:],w[:] = vw[1:Pv],vw[Pv+1:end]
         end
         for t in tvec
