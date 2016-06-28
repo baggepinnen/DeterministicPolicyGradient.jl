@@ -133,7 +133,7 @@ end
 # `state0::DPGstate` initial parameters
 # `x0` initial system state
 # """
-function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
+function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0)
     println("=== Deterministic Policy Gradient ===")
     # Expand input structs
     σβ          = opts.σβ
@@ -145,12 +145,10 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
     τ           = opts.τ
     iters       = opts.iters
     m           = opts.m
-    n = length(x0)
+    n           = length(x0)
     critic_update= opts.critic_update
     λrls        = opts.λrls
-    if opts.experience_replay > 0
-        mem         = SequentialReplayMemory(opts.experience_replay)
-    end
+    mem         = SequentialReplayMemory(opts.experience_replay)
     μ           = funs.μ
     Q           = funs.Q
     gradients   = funs.gradients
@@ -177,9 +175,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
     dvs         = ones(Pv)
     cost        = zeros(iters)
     bestcost    = Inf
-
-    noise       = exploration(σβ)
-    x,uout      = simulate(Θ, x0, noise)
+    x,uout      = simulate(Θ, x0)
     T           = size(x,1)
 
     # TODO: Make the parameters below part of the options
@@ -218,14 +214,13 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
         for t in tvec
             a1          = μ(t.s1,Θt,t.t)
             ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t,C)
+            y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
+            t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t,C))[1]
             if critic_update == :rls
-                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
-                t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t,C))[1]
                 vw,Pvw      = RLS([v;w], y, [∇vQ;∇wQ], Pvw, λrls)
                 v[:],w[:]   = vw[1:Pv],vw[Pv+1:end]
             elseif critic_update == :kalman
-                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
-                t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t,C))[1]
+
                 Φ = [∇vQ;∇wQ]
                 # R1 = ΦΦ', to only update covariance in the direction of incoming data
                 vw,Pk = kalman(Φ*Φ',R2,R12,[v;w], y, Φ, Pk)
@@ -238,10 +233,10 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
         end
         dΘ./= length(tvec)
         # RMS prop update parameters (gradient divided by running average of RMS gradient, see. http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf
+        dΘs[:] = opts.rmspropfactor*dΘs + (1-opts.rmspropfactor)*dΘ.^2
         if update_actor
             ΔΘ = αΘ * dΘ
             if opts.rmsprop
-                dΘs[:] = opts.rmspropfactor*dΘs + (1-opts.rmspropfactor)*dΘ.^2
                 ΔΘ ./= sqrt(dΘs+1e-10) # RMSprop
             end
             # ΔΘ = dΘ./sqrt(dΘs+1e-10).*sqrt(dΘs2) # ADAdelta
@@ -249,18 +244,24 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
             dΘs2 = opts.momentum*dΘs2 + ΔΘ # Momentum + RMSProp
             Θ[:]  += dΘs2
         end
+
         if critic_update == :gradient
+            Δw = αw/T * dw
+            Δv = αv/T * dv
             dws[:] = opts.rmspropfactor*dws + (1-opts.rmspropfactor)*dw.^2
             dvs[:] = opts.rmspropfactor*dvs + (1-opts.rmspropfactor)*dv.^2
-            w += αw/T * dw./(sqrt(dws)+1e-8)
-            v += αv/T * dv./(sqrt(dvs)+1e-8)
+            if opts.rmsprop
+                Δw ./= sqrt(dws)+1e-10
+                Δv ./= sqrt(dvs)+1e-10
+            end
+            w += Δw
+            v += Δv
         end
 
         # Update tracking networks
         Θt[:], wt[:], vt[:] = τ*Θ + (1-τ)*Θt, τ*w + (1-τ)*wt, τ*v + (1-τ)*vt
         nothing
     end
-    tc = 0
 
     # Main loop ================================================================
     for i = 1:iters
@@ -269,13 +270,12 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
         x,uout      = simulate(Θ, x0i, noise)
         batch = Vector{Transition}(T-1)
         for ti = 1:T-1
-            tc         += 1
             s1          = x[ti+1,:][:]
             s           = x[ti,:][:]
             a           = uout[ti,:][:]
             ri          = r(s1,a,ti)
             cost[i]    -= ri
-            trans       = Transition(s,s1,a,ri,0.,ti,tc)
+            trans       = Transition(s,s1,a,ri,0.,ti,i)
             batch[ti]   = trans
             opts.experience_replay > 0 && push!(mem, trans)
         end
@@ -325,6 +325,6 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,i,s,u, cost)->0)
 
 
     end
-    println("Done. Minimum cost: $(minimum(cost[1:10:end])), ($(minimum(cost)))")
+    println("Done. Minimum cost: $(minimum(cost[1:opts.eval_interval:end])), ($(minimum(cost)))")
     return cost, Θb, wb, vb, mem # Select the parameters with lowest cost
 end
