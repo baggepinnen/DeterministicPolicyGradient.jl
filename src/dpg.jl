@@ -169,10 +169,10 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
     Θb          = deepcopy(Θ) # Best weights
     wb          = deepcopy(w)
     vb          = deepcopy(v)
-    dΘs         = 0.0001ones(Pw) # Weight gradient states
+    dΘs         = 1000ones(Pw) # Weight gradient states
     dΘs2        = 0*ones(Pw)
-    dws         = ones(Pw)
-    dvs         = ones(Pv)
+    dws         = 100ones(Pw)
+    dvs         = 100ones(Pv)
     cost        = zeros(iters)
     bestcost    = Inf
     x,uout      = simulate(Θ, x0)
@@ -201,14 +201,14 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
             targets = Vector{Float64}(length(mem))
             for (it,t) in enumerate(mem)
                 a1          = μ(t.s1,Θ,t.t)
-                ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t,C)
+                _, ∇wQ, ∇vQ, _ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t,C)
                 y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
                 targets[it] = y
                 # t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1] # Not needed for batch learning
                 A[it,1:Pv]  = ∇vQ
                 A[it,Pv+1:end]  = ∇wQ
             end
-            vw = [A; opts.λ*eye(Pv+Pw)]\[targets+100;zeros(Pv+Pw)]
+            vw = [A; opts.λ*eye(Pv+Pw)]\[targets+100;zeros(Pv+Pw)] #TODO magic numer 100?
             v[:],w[:] = vw[1:Pv],vw[Pv+1:end]
         end
         for t in tvec
@@ -318,7 +318,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
                 αw  /= 5
                 αv  /= 5
                 αu  /= 5
-                σβ ./= 2
+                σβ  /= 2
                 Θ, w, v = deepcopy(Θb), deepcopy(wb), deepcopy(vb) # reset parameters
             end
         end

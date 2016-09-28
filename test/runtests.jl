@@ -107,20 +107,20 @@ cost, Θ, w, v, mem = dpg(opts, funs, initial_state, x0, c1)
 @test minimum(cost) < 0.4cost[2]
 
 opts = DPGopts(m,
-σβ                  = 0.1,
-αΘ                  = 0.0001,
-αw                  = 0.005,
-αv                  = 0.005,
-γ                   = 0.999,
-τ                   = 0.0000001,
-iters               = 5000,
+σβ                  = 2,
+αΘ                  = 0.001,
+αw                  = 0.01,
+αv                  = 0.01,
+γ                   = 0.99,
+τ                   = 0.01,
+iters               = 3000,
 critic_update       = :gradient,
 stepreduce_interval = 10,
 stepreduce_factor   = 0.995,
-hold_actor          = 200,
+hold_actor          = 500,
 experience_replay   = 0,
-experience_ratio    = 2,
-momentum            = 0.9,
+experience_ratio    = 1,
+momentum            = 0.8,
 rmsprop             = true,
 rmspropfactor       = 0.9,
 eval_interval       = 100,
@@ -134,25 +134,23 @@ mem
 
 
 ## Test experience replay
-using DeterministicPolicyGradient
-using Base.Test
 n = 2
 s = randn(n)
 s1 = randn(n)
 a = randn(n)
-r = randn()
+reward = randn()
 δ1 = 1.
 δ2 = 2.
 δ3 = 3.
 
-t1 = Transition(s,s1,a,r,δ1,1)
-t2 = Transition(s,s1,a,r,δ2,2)
-t3 = Transition(s,s1,a,r,δ3,3)
+t1 = Transition(s,s1,a,reward,δ1,1,1)
+t2 = Transition(s,s1,a,reward,δ2,2,2)
+t3 = Transition(s,s1,a,reward,δ3,3,3)
 
 @test t1 < t2
 
 N = 3
-mem = ReplayMemory(N)
+mem = SortedReplayMemory(N)
 
 push!(mem,t2)
 push!(mem,t1)
