@@ -10,8 +10,8 @@ notifications:
 
 
 # uncomment the following lines to override the default test script
-script:
- - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
- - julia -e 'Pkg.add("ControlSystems"); Pkg.checkout("ControlSystems");  Pkg.test("DeterministicPolicyGradient"; coverage=true)'
+# script:
+#  - if [[ -a .git/shallow ]]; then git fetch --unshallow; fi
+#  - julia -e 'Pkg.add("ControlSystems"); Pkg.checkout("ControlSystems");  Pkg.test("DeterministicPolicyGradient"; coverage=true)'
 
 #Pkg.clone(pwd()); Pkg.build("DeterministicPolicyGradient");
