@@ -88,6 +88,8 @@ Structure with functions to pass to the DMP
 
 `μ,Q,gradients,simulate,exploration,reward`
 
+`∇aQ, ∇wQ,∇vQ, ∇μ = gradients(s1,s,a1,a,Θ,w,v,t,C)`
+
 See example file or the paper by Silver et al. 2014
 """
 immutable DPGfuns
@@ -189,59 +191,39 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
 
     s = zeros(n)
 
-    function train!(tvec, update_actor,update_critic=true)
-        dΘ,dw,dv = zeros(Θ),zeros(w),zeros(v)
-        if critic_update ==:leastsquares && update_critic
-            basis = sample_uniform!(mem,Pv)
-            for (it,t) in enumerate(basis)
-                C[:,it] = t.s
-            end
-            push!(mem,basis)
-            A = Matrix{Float64}(length(mem),Pv+Pw)
-            targets = Vector{Float64}(length(mem))
-            for (it,t) in enumerate(mem)
-                a1          = μ(t.s1,Θ,t.t)
-                _, ∇wQ, ∇vQ, _ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t,C)
-                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
-                targets[it] = y
-                # t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1] # Not needed for batch learning
-                A[it,1:Pv]  = ∇vQ
-                A[it,Pv+1:end]  = ∇wQ
-            end
-            vw = [A; opts.λ*eye(Pv+Pw)]\[targets+100;zeros(Pv+Pw)] #TODO magic numer 100?
-            v[:],w[:] = vw[1:Pv],vw[Pv+1:end]
+    function train_critic()
+        # Update the critic network using experience replay
+        # Maybe take several steps here, i.e., sample many mini batches
+        batch = sample_uniform!(mem,batch_size)
+        for (it,t) in enumerate(batch)
+            a1          = μ(t.s1,Θ,t.t)
+            y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
+            targets[it] = y
         end
-        for t in tvec
+        run(session, train_step, Dict(s => s, a => a, y => targets)
+    end
+
+    function handle_rollout(rollout)
+        dΘ = zeros(Θ)
+        for t in rollout
             a1          = μ(t.s1,Θt,t.t)
-            ∇aQ, ∇wQ,∇vQ, ∇μ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t,C)
+            ∇aQ, ∇μ     = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t,C)
             y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
             t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t,C))[1]
-            if critic_update == :rls
-                vw,Pvw      = RLS([v;w], y, [∇vQ;∇wQ], Pvw, λrls)
-                v[:],w[:]   = vw[1:Pv],vw[Pv+1:end]
-            elseif critic_update == :kalman
-
-                Φ = [∇vQ;∇wQ]
-                # R1 = ΦΦ', to only update covariance in the direction of incoming data
-                vw,Pk = kalman(Φ*Φ',R2,R12,[v;w], y, Φ, Pk)
-                v[:],w[:] = vw[1:Pv],vw[Pv+1:end]
-            elseif critic_update ==:gradient
-                dw += t.δ * ∇wQ
-                dv += t.δ * ∇vQ
-            end
             dΘ += ∇μ*∇aQ
         end
-        dΘ./= length(tvec)
-        # RMS prop update parameters (gradient divided by running average of RMS gradient, see. http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf
+        dΘ./= length(rollout)
+    end
 
+    function update_tracking_networks()
+        Θt[:], wt[:] = τ*Θ + (1-τ)*Θt, τ*w + (1-τ)*wt
+    end
 
+    function train!(rollout, update_actor)
+        dΘ = handle_rollout(rollout)
+        train_critic()
         actor_update!(Θ,αΘ,dΘ,dΘs,dΘs2,update_actor,opts)
-
-        critic_update == :gradient && critic_update_gradient!(w,v,T,αw,αv,dw,dv,dws,dvs,opts)
-
-
-        # Update tracking networks
-        Θt[:], wt[:], vt[:] = τ*Θ + (1-τ)*Θt, τ*w + (1-τ)*wt, τ*v + (1-τ)*vt
+        update_tracking_networks()
         nothing
     end
 
@@ -250,7 +232,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
         x0i         = x0 #+ 2randn(n) # TODO: this should not be hard coded
         noise       = exploration(σβ)
         x,uout      = simulate(Θ, x0i, noise)
-        batch = Vector{Transition}(T-1)
+        rollout     = Vector{Transition}(T-1)
         for ti = 1:T-1
             s1          = x[ti+1,:][:]
             s           = x[ti,:][:]
@@ -258,17 +240,17 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
             ri          = r(s1,a,ti)
             cost[i]    -= ri
             trans       = Transition(s,s1,a,ri,0.,ti,i)
-            batch[ti]   = trans
+            rollout[ti] = trans
             opts.experience_replay > 0 && push!(mem, trans)
         end
-        train!(batch, i > opts.hold_actor)
+        train!(rollout, i > opts.hold_actor)
         αΘ,αw,αv = reduce_stepsize_periodic!(i,αΘ,αw,αv,opts)
 
 
         if opts.experience_replay > 0 && i > 10
             for ei = 1:opts.experience_ratio
                 trans = sample_uniform!(mem,T-1)
-                train!(trans, i > opts.hold_actor, ei-1 % opts.critic_update_interval == 0)
+                train!(trans, i > opts.hold_actor)
                 push!(mem, trans)
             end
             ((i % 50) == 0) && sort!(mem)

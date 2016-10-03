@@ -22,9 +22,21 @@ show(t::Transition) = display(t)
 isless(t1::Transition,t2::Transition) = isless(abs(t1.δ),abs(t2.δ))
 zero(Transition) = Transition([0.],[0.],[0.],0.,0,0,0)
 
-
+"""
+A replay memory stores transitions for later use in experience replay
+"""
 abstract ReplayMemory
 
+"""
+    SortedReplayMemory <: ReplayMemory
+
+This kind of replay memory stores all transitions sorted based on their temporal difference error.
+
+A `Transition` can be sampled from this memory using
+`sample_greedy!(mem [, n])`\n
+`sample_beta!(mem [, n])`\n
+`sample_uniform!(mem [, n])`
+"""
 type SortedReplayMemory <: ReplayMemory
     mem::Vector{Transition}
     s::Int
@@ -32,6 +44,11 @@ type SortedReplayMemory <: ReplayMemory
     SortedReplayMemory(s::Int) = new(Vector{Transition}(),s, sum(1./(1:s)))
 end
 
+"""
+    SequentialReplayMemory <: ReplayMemory
+
+This kind of replay memory stores all transitions in sequence, kind of like a ring buffer
+"""
 type SequentialReplayMemory <: ReplayMemory
     mem::Vector{Transition}
     s::Int
