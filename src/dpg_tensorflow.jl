@@ -227,8 +227,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
         nothing
     end
 
-    # Main loop ================================================================
-    for i = 1:iters
+    function create_rollout(i)
         x0i         = x0 #+ 2randn(n) # TODO: this should not be hard coded
         noise       = exploration(σβ)
         x,uout      = simulate(Θ, x0i, noise)
@@ -243,10 +242,9 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
             rollout[ti] = trans
             opts.experience_replay > 0 && push!(mem, trans)
         end
-        train!(rollout, i > opts.hold_actor)
-        αΘ,αw,αv = reduce_stepsize_periodic!(i,αΘ,αw,αv,opts)
+    end
 
-
+    function experience_replay(i)
         if opts.experience_replay > 0 && i > 10
             for ei = 1:opts.experience_ratio
                 trans = sample_uniform!(mem,T-1)
@@ -255,16 +253,16 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
             end
             ((i % 50) == 0) && sort!(mem)
         end
+    end
 
+    function evaluate(i)
         if (i-1) % opts.eval_interval == 0 # Simulate without noise and evaluate cost
             x,uout = simulate(Θ, x0) # Evaluate using latest parameters and possibly revert back to tracking parameters
             cost[i] = J(x,uout,r)
             progressfun(Θ,w,v,C,i,x,uout, cost)
-            if critic_update == :gradient
-                println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5, " norm ∇w: ", Σ½(dws) |> r5, " norm ∇v: ", Σ½(dvs) |> r5)#, " trace(P): ", trace(Pvw) |> r5)
-            else
-                println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5)
-            end
+
+            println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5, " norm ∇w: ", Σ½(dws) |> r5, " norm ∇v: ", Σ½(dvs) |> r5)#, " trace(P): ", trace(Pvw) |> r5)
+            
             if cost[i] < bestcost
                 bestcost = cost[i]
                 # TODO: changed to saveing tracking networks, to be more likely to escape local minima
@@ -276,8 +274,15 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
                 αΘ,αw,αv,σβ = reduce_stepsize_divergence!(αΘ,αw,αv,Θb,wb,vb)
             end
         end
+    end
 
-
+    # Main loop ================================================================
+    for i = 1:iters
+        rollout = create_rollout(i)
+        train!(rollout, i > opts.hold_actor)
+        αΘ,αw,αv = reduce_stepsize_periodic!(i,αΘ,αw,αv,opts)
+        experience_replay(i)
+        evaluate(i)
     end
     println("Done. Minimum cost: $(minimum(cost[1:opts.eval_interval:end])), ($(minimum(cost)))")
     return cost, Θb, wb, vb, mem # Select the parameters with lowest cost
