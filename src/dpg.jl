@@ -202,7 +202,7 @@ function dpg(opts, funs, state0, x0,C, progressfun = (Θ,w,v,C,i,x,uout,cost)->0
             for (it,t) in enumerate(mem)
                 a1          = μ(t.s1,Θ,t.t)
                 _, ∇wQ, ∇vQ, _ = gradients(t.s1,t.s,a1,t.a,Θ,w,v,t.t,C)
-                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C)
+                y           = t.r + γ * Q(t.s1,a1,vt,wt,Θt,t.t,C) # t.t or t.t+1 ?
                 targets[it] = y
                 # t.δ         = (y - Q(t.s,t.a,v,w,Θ,t.t))[1] # Not needed for batch learning
                 A[it,1:Pv]  = ∇vQ

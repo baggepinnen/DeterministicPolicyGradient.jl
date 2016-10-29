@@ -2,30 +2,36 @@ r5(x) = round(x,5)
 const b = Beta(1,5)
 
 import Base.Collections: heapify, heapify!, heappush!, heappop!
-import Base: isless, zero, push!, show, display, getindex, setindex!, sort!, length, start, next, done
+import Base: isless, zero, push!, show, display, getindex, setindex!, sort!, length, start, next, done, eltype
 
 export Transition, ReplayMemory,SequentialReplayMemory,SortedReplayMemory, sample_greedy!, sample_beta!, sample_uniform!, push!, delete_and_push!, sort!, setindex!
 
-type Transition
-    s::Vector{Float64}
-    s1::Vector{Float64}
-    a::Vector{Float64}
-    r::Float64
-    δ::Float64
-    t::Union{Int,Float64}
+type Transition{T}
+    s::Vector{T}
+    s1::Vector{T}
+    a::Vector{T}
+    r::T
+    δ::T
+    t::Union{Int,T}
     i::Int
 end
+
+typealias Batch{T<:Real} Vector{Transition{T}}
 
 display(t::Transition) = println("s: ", string(r5(t.s)), " s1: ", string(r5(t.s1)), " a: ", string(r5(t.a)), " r: ", string(r5(t.r)), " δ: ", string(r5(t.δ)))
 show(t::Transition) = display(t)
 
 isless(t1::Transition,t2::Transition) = isless(abs(t1.δ),abs(t2.δ))
-zero(Transition) = Transition([0.],[0.],[0.],0.,0,0,0)
+# zero(Transition) = Transition([0.],[0.],[0.],0.,0,0,0)
+zero{T}(::Type{Transition{T}}) = Transition{T}(zeros(T,1),zeros(T,1),zeros(T,1),zero(T),zero(T),zero(T),0)
+zero(Transition) = Transition(zeros(Float32,1),zeros(Float32,1),zeros(Float32,1),zero(Float32),zero(Float32),zero(Float32),0)
 
 """
 A replay memory stores transitions for later use in experience replay
 """
-abstract ReplayMemory
+abstract ReplayMemory{T}
+
+eltype{T}(::Type{ReplayMemory{T}}) = T
 
 """
     SortedReplayMemory <: ReplayMemory
@@ -37,49 +43,51 @@ A `Transition` can be sampled from this memory using
 `sample_beta!(mem [, n])`\n
 `sample_uniform!(mem [, n])`
 """
-type SortedReplayMemory <: ReplayMemory
-    mem::Vector{Transition}
+type SortedReplayMemory{T} <: ReplayMemory
+    mem::Batch{T}
     s::Int
     rs::Float64
-    SortedReplayMemory(s::Int) = new(Vector{Transition}(),s, sum(1./(1:s)))
 end
+SortedReplayMemory{T}(::Type{T},s::Int) = SortedReplayMemory{T}(zeros(Transition{T},s),s, sum(1./(1:s)))
+SortedReplayMemory(s::Int) = SortedReplayMemory(Float32,s)
 
 """
     SequentialReplayMemory <: ReplayMemory
 
 This kind of replay memory stores all transitions in sequence, kind of like a ring buffer
 """
-type SequentialReplayMemory <: ReplayMemory
-    mem::Vector{Transition}
+type SequentialReplayMemory{T} <: ReplayMemory{T}
+    mem::Batch{T}
     s::Int
     _i::Int
     _filled::Bool
     _last_sampled::Vector{Int}
-    SequentialReplayMemory(s::Int) = new(Vector{Transition}(s),s,0, false,Int[])
 end
+SequentialReplayMemory{T}(::Type{T},s::Int) = SequentialReplayMemory{T}(zeros(Transition{T},s),s,0, false,Int[])
+SequentialReplayMemory(s::Int) = SequentialReplayMemory(Float32, s)
 
-start(mem::ReplayMemory) = start(mem.mem)
-next(mem::ReplayMemory,i) = next(mem.mem,i)
-done(mem::SortedReplayMemory,i) = done(mem.mem,i)
+start(mem::ReplayMemory)            = start(mem.mem)
+next(mem::ReplayMemory,i)           = next(mem.mem,i)
+done(mem::SortedReplayMemory,i)     = done(mem.mem,i)
 done(mem::SequentialReplayMemory,i) = (mem._filled ? mem.s : mem._i) < i
 
 
 
-display(mem::SortedReplayMemory) = map(display,mem.mem)
+display(mem::SortedReplayMemory)    = map(display,mem.mem)
 display(mem::SequentialReplayMemory) = mem._filled ? map(display,mem.mem) : [display(mem[i]) for i = 1:mem._i]
-show(t::Transition) = map(display,mem.mem)
+show(t::Transition)                 = map(display,mem.mem)
 
-getindex(mem::ReplayMemory, ind) = mem.mem[ind]
+getindex(mem::ReplayMemory, ind)    = mem.mem[ind]
 setindex!(mem::ReplayMemory, trans::Transition, ind) = setindex!(mem.mem, trans, ind)
-sort!(mem::SortedReplayMemory) = sort!(mem.mem,rev=true)
-sort!(mem::SequentialReplayMemory) = nothing
+sort!(mem::SortedReplayMemory)      = sort!(mem.mem,rev=true)
+sort!(mem::SequentialReplayMemory)  = nothing
 
 function display(mem::ReplayMemory)
     map(display,mem.mem)
     nothing
 end
 
-length(mem::SortedReplayMemory) = length(mem.mem)
+length(mem::SortedReplayMemory)     = length(mem.mem)
 length(mem::SequentialReplayMemory) = mem._filled ? mem.s : mem._i
 
 function push!(mem::SortedReplayMemory, t::Transition)
@@ -90,7 +98,7 @@ function push!(mem::SortedReplayMemory, t::Transition)
     nothing
 end
 
-function push!(mem::ReplayMemory, t::Vector{Transition})
+function push!{T}(mem::ReplayMemory{T}, t::Batch{T})
     for ti in t
         push!(mem,ti)
     end
@@ -141,8 +149,8 @@ function sample_uniform!(mem::SequentialReplayMemory)
         retval = mem[ind]
 end
 
-function sample_many!(mem::ReplayMemory,n,sample_fun)
-    retvec = Vector{Transition}(n)
+function sample_many!{T}(mem::ReplayMemory{T},n,sample_fun)
+    retvec = Batch{T}(n)
     for i = 1:n
         retvec[i] = sample_fun(mem)
     end
