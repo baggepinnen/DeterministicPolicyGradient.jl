@@ -215,7 +215,7 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
         # TODO: train using this rollout also =)
         progressfun(Θ,i,x,uout, cost,rollout)
         println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5)
-        train!(rollout, false, true)
+        train!(rollout, true, true)
         if cost[i] < bestcost
             bestcost = cost[i]
             # TODO: changed to saveing tracking networks, to be more likely to escape local minima
