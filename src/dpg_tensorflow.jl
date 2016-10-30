@@ -127,7 +127,6 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
     Qt          = funs.Qt
     gradient   = funs.gradient
     simulate    = funs.simulate
-    r           = funs.reward
 
     # Initialize parameters
     Θ           = deepcopy(state0.Θ) # Weights
@@ -152,7 +151,7 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
             dΘ = policy_gradient(rollout)
             update_actor!(Θ,αΘ,dΘ,dΘs,dΘs2,update_actor,opts)
         end
-        update_tracking_networks(update_actor)
+        # update_tracking_networks(update_actor)
         nothing
     end
 
@@ -191,7 +190,7 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
             s1          = x[ti+1,:][:]
             s           = x[ti,:][:]
             a           = uout[ti,:][:]
-            ri          = r(s1,a,ti)
+            ri          = funs.reward(s1,a,ti)
             trans       = Transition{Float32}(s,s1,a,ri,0.,ti,i)
             rollout[ti] = trans
         end
@@ -211,12 +210,12 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
     function periodic_evaluation(i)
         x,uout = simulate(Θ, x0) # Evaluate using latest parameters and possibly revert back to tracking parameters
 
-        cost[i] = J(x,uout,r)
+        cost[i] = J(x,uout,funs.reward)
         local rollout = create_rollout(x,uout,i)
         # TODO: train using this rollout also =)
         progressfun(Θ,i,x,uout, cost,rollout)
         println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5)
-
+        train!(rollout, false, true)
         if cost[i] < bestcost
             bestcost = cost[i]
             # TODO: changed to saveing tracking networks, to be more likely to escape local minima
@@ -230,14 +229,15 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
     for i = 1:iters
         x0i         = x0 #+ 2randn(n) # TODO: this should not be hard coded
         x,uout      = simulate(Θ, x0i, true)
-        cost[i]     = J(x,uout,r)
+        cost[i]     = J(x,uout,funs.reward)
         rollout     = create_rollout(x,uout,i)
         update_actor = i > opts.hold_actor
         train!(rollout, update_actor, true)
+        update_tracking_networks(update_actor)
         αΘ,αw = reduce_stepsize_periodic!(i,αΘ,αw,opts)
         if opts.experience_replay > 0
             push!(mem, rollout)
-            i > 50 && experience_replay(i)# TODO: magic number
+            i > 0 && experience_replay(i)# TODO: magic number
         end
 
         if (i-1) % opts.eval_interval == 0 # Simulate without noise and evaluate cost

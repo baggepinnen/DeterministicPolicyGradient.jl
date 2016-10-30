@@ -1,6 +1,6 @@
 module DeterministicPolicyGradient
-using Distributions, TensorFlow, Plots
-export Batch, DPGopts, DPGfuns, DPGstate, dpg, meshgrid, meshgrid2, get_centers_multi, quadform, Qplot, Qplot!
+using Distributions, Plots
+export Batch, DPGopts, DPGfuns, DPGstate, dpg, meshgrid, meshgrid2, get_centers_multi, quadform, Qplot, Qplot!, autoscale
 
 include("experience_replay.jl")
 include("utilities.jl")

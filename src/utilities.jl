@@ -154,8 +154,8 @@ function Qplot!{T}(batch::Batch{T}, Q, μ, Θ, γ; kwargs...)
     q   = Vector{T}(batch_size)
     r   = Vector{T}(batch_size)
     for (i,trans) in enumerate(batch)
-        a1     = μ(trans.s1,Θ,trans.t)
-        q1      = Q(trans.s1,a1,trans.t)
+        # a1     = μ(trans.s1,Θ,trans.t)
+        # q1      = Q(trans.s1,a1,trans.t)
         q[i]    = Q(trans.s,trans.a,trans.t)
         r[i]    = trans.r
     end
@@ -164,7 +164,7 @@ function Qplot!{T}(batch::Batch{T}, Q, μ, Θ, γ; kwargs...)
 
     mir,mar = extrema(ret)
     # miq,maq = extrema(q)
-    plot!([mir,mar],[mir,mar]; kwargs...)
+    plot!([mir,mar],[mir,mar]; lab = "", kwargs...)
     # plot!([r,ret])
 end
 function Qplot{T}(batch::Batch{T}, Q, μ, Θ, γ; kwargs...)
@@ -172,3 +172,9 @@ function Qplot{T}(batch::Batch{T}, Q, μ, Θ, γ; kwargs...)
     Qplot!(batch, Q, μ, Θ, γ; kwargs...)
     f
 end
+
+function autoscale(T::Type,s...)
+    d = s[1]
+    return 4/√(d)*rand(T,s...) - 2/√(d)
+end
+autoscale(s...) = autoscale(Float32,s...)
