@@ -162,8 +162,9 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
         batch_size = length(batch)
         if montecarlo
             s,a,targets = batch2say_montecarlo(batch, γ)
+            update_tracking_networks(false) # When we have taken a montecarlo step we update tracking networks immediately so that TD-learning does not pull us back again.
         else
-            s,a,targets = batch2say(batch, Qt, μ, Θt, γ)
+            s,a,targets = batch2say(batch, Qt, μ, Θ, γ)
         end
         funs.train_critic(s,a,targets)
     end
@@ -179,8 +180,8 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
     end
 
     function policy_gradient(rollout)
-        s,a,ts = batch2sat(rollout, μ, Θ)
-        dΘ     = gradient(s,a,Θ,ts)
+        s,aΘ,ts = batch2sat(rollout, μ, Θ)
+        dΘ     = gradient(s,aΘ,Θ,ts)
         dΘ   ./= length(rollout)
     end
 
@@ -198,13 +199,13 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
     end
 
     function update_tracking_networks(update_actor)
-        if opts.experience_ratio == 0 || opts.experience_replay == 0
-            return
-        end
-        funs.update_tracking_networks()
-        # if update_actor
-        Θt[:] = τ*Θ + (1-τ)*Θt
+        # if opts.experience_ratio == 0 || opts.experience_replay == 0
+        #     return
         # end
+        funs.update_tracking_networks()
+        if update_actor
+            Θt[:] = τ*Θ + (1-τ)*Θt
+        end
     end
 
     function periodic_evaluation(i)
@@ -215,6 +216,7 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
         progressfun(Θ,i,x,uout, cost,rollout)
         println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5)
         train!(rollout, i > opts.hold_actor, true) # Here we can actually do MonteCarlo since this is on policy (not on tracking policy though)
+        opts.experience_replay > 0 && push!(mem,rollout)
         if cost[i] < bestcost
             bestcost = cost[i]
             Θb = deepcopy(Θ)

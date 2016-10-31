@@ -72,15 +72,15 @@ end
 
 function batch2sat{T}(batch::Batch{T}, μ, Θ)
     batch_size = length(batch)
-    s = Matrix{T}(batch_size,length(batch[1].s))
-    a = Matrix{T}(batch_size,length(batch[1].a))
+    s  = Matrix{T}(batch_size,length(batch[1].s))
+    aΘ = Matrix{T}(batch_size,length(batch[1].a))
     ts = Vector{T}(batch_size)
     for (i,trans) in enumerate(batch)
-        s[i,:]     = trans.s
-        a[i,:]     = μ(trans.s,Θ, trans.t)
-        ts[i]      = trans.t
+        s[i,:] = trans.s
+       aΘ[i,:] = μ(trans.s,Θ, trans.t)
+         ts[i] = trans.t
     end
-    s,a,ts
+    s,aΘ,ts
 end
 
 function batch2say{T}(batch::Batch{T}, Q, μ, Θ, γ)
@@ -162,7 +162,7 @@ function Qplot!{T}(batch::Batch{T}, Q, μ, Θ, γ; kwargs...)
     ret = discounted_return(r,γ)
     mir,mar = extrema(ret)
     plot!([mir,mar],[mir,mar]; lab = "", kwargs...)
-    scatter!(ret,q; ylabel="Estimated Q", xlabel="Actual return",markersize=3, markerstrokealpha=0, kwargs...)
+    scatter!(ret,q; ylabel="Estimated Q", xlabel="Actual return",markersize=3, markerstrokealpha=0, lab="", kwargs...)
 end
 function Qplot{T}(batch::Batch{T}, Q, μ, Θ, γ; kwargs...)
     f = plot()
