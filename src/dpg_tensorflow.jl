@@ -172,7 +172,7 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
         for ei = 1:opts.experience_ratio
             batch = sample_uniform!(mem,T-1)
             # train_critic(batch)
-            train!(batch, false && i > opts.hold_actor)
+            train!(batch, i > opts.hold_actor)
             push!(mem, batch)
         end
         ((i % 50) == 0) && sort!(mem)
@@ -212,13 +212,11 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
 
         cost[i] = J(x,uout,funs.reward)
         local rollout = create_rollout(x,uout,i)
-        # TODO: train using this rollout also =)
         progressfun(Θ,i,x,uout, cost,rollout)
         println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5)
-        train!(rollout, true, true)
+        train!(rollout, i > opts.hold_actor, true) # Here we can actually do MonteCarlo since this is on policy (not on tracking policy though)
         if cost[i] < bestcost
             bestcost = cost[i]
-            # TODO: changed to saveing tracking networks, to be more likely to escape local minima
             Θb = deepcopy(Θ)
         elseif cost[i] > opts.divergence_threshold*bestcost
             αΘ,αw = reduce_stepsize_divergence!(Θ,αΘ,αw,Θb)
@@ -232,12 +230,12 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
         cost[i]     = J(x,uout,funs.reward)
         rollout     = create_rollout(x,uout,i)
         update_actor = i > opts.hold_actor
-        train!(rollout, update_actor, true)
+        train!(rollout, update_actor, false)
         update_tracking_networks(update_actor)
         αΘ,αw = reduce_stepsize_periodic!(i,αΘ,αw,opts)
         if opts.experience_replay > 0
             push!(mem, rollout)
-            i > 0 && experience_replay(i)# TODO: magic number
+            i > 3 && experience_replay(i)# TODO: magic number
         end
 
         if (i-1) % opts.eval_interval == 0 # Simulate without noise and evaluate cost

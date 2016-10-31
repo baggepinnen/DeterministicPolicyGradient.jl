@@ -160,12 +160,9 @@ function Qplot!{T}(batch::Batch{T}, Q, μ, Θ, γ; kwargs...)
         r[i]    = trans.r
     end
     ret = discounted_return(r,γ)
-    scatter!(ret,q; ylabel="Estimated Q", xlabel="Actual return",markersize=3, markerstrokealpha=0, kwargs...)
-
     mir,mar = extrema(ret)
-    # miq,maq = extrema(q)
     plot!([mir,mar],[mir,mar]; lab = "", kwargs...)
-    # plot!([r,ret])
+    scatter!(ret,q; ylabel="Estimated Q", xlabel="Actual return",markersize=3, markerstrokealpha=0, kwargs...)
 end
 function Qplot{T}(batch::Batch{T}, Q, μ, Θ, γ; kwargs...)
     f = plot()
@@ -178,3 +175,22 @@ function autoscale(T::Type,s...)
     return 4/√(d)*rand(T,s...) - 2/√(d)
 end
 autoscale(s...) = autoscale(Float32,s...)
+
+function update_plot!(p; max_history = 10, attribute = :markercolor)
+    num_series = length(p.series_list)
+    if num_series > 1
+        if num_series > max_history
+            deleteat!(p.series_list,1:num_series-max_history)
+        end
+        for i = 1:min(max_history, num_series)-1
+            alpha = 1-2/max_history
+            c = p[i][attribute]
+            b = alpha*c.b + (1-alpha)*0.5
+            g = alpha*c.g + (1-alpha)*0.5
+            r = alpha*c.r + (1-alpha)*0.5
+            a = alpha*c.alpha
+            p[i][attribute] = RGBA(r,g,b,a)
+        end
+    end
+
+end
