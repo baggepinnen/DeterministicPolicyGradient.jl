@@ -84,17 +84,6 @@ immutable DPGfuns
     update_tracking_networks::Function
 end
 
-"""
-Structure which contains the parameters of the DPG optimization problem
-
-`Θ` parameters in the actor
-`w` parameters in the Q-function
-<!--  -->
-"""
-type DPGstate{T1<:AbstractVector}
-    Θ::T1
-end
-
 function J(x,a,r)
     cost = -sum(r(x[t+1,:][:],a[t,:][:],t) for t = 1:size(x,1)-1)
 end
@@ -111,7 +100,7 @@ end
 # `state0::DPGstate` initial parameters
 # `x0` initial system state
 # """
-function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->0)
+function dpg(opts, funs, Θ, x0, progressfun = (Θ,i,x,uout,cost, rollout)->0)
     println("=== Deterministic Policy Gradient ===")
     # Expand input structs
     αΘ          = opts.αΘ
@@ -129,7 +118,6 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
     simulate    = funs.simulate
 
     # Initialize parameters
-    Θ           = deepcopy(state0.Θ) # Weights
     Θt          = deepcopy(Θ) # Tracking weights
     Pw          = size(Θ,1)
     Θb          = deepcopy(Θ) # Best weights
@@ -164,7 +152,7 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
             s,a,targets = batch2say_montecarlo(batch, γ)
             update_tracking_networks(false) # When we have taken a montecarlo step we update tracking networks immediately so that TD-learning does not pull us back again.
         else
-            s,a,targets = batch2say(batch, Qt, μ, Θ, γ)
+            s,a,targets = batch2say(batch, Qt, μ, Θt, γ)
         end
         funs.train_critic(s,a,targets)
     end
@@ -215,7 +203,7 @@ function dpg(opts, funs, state0, x0, progressfun = (Θ,i,x,uout,cost, rollout)->
         local rollout = create_rollout(x,uout,i)
         progressfun(Θ,i,x,uout, cost,rollout)
         println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5)
-        train!(rollout, i > opts.hold_actor, true) # Here we can actually do MonteCarlo since this is on policy (not on tracking policy though)
+        train!(rollout, i > opts.hold_actor, false) # Here we can actually do MonteCarlo since this is on policy (not on tracking policy though)
         opts.experience_replay > 0 && push!(mem,rollout)
         if cost[i] < bestcost
             bestcost = cost[i]

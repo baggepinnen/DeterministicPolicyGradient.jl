@@ -112,6 +112,10 @@ function batch2say_montecarlo{T}(batch::Batch{T}, γ)
     s,a,y
 end
 
+# using Gallium
+# breakpoint(batch2say)
+# breakpoint(batch2say_montecarlo)
+
 function batch2all{T}(batch::Batch{T}, Q, μ, Θ, γ)
     batch_size = length(batch)
     s   = Matrix{T}(batch_size,length(batch[1].s))
@@ -172,9 +176,14 @@ end
 
 function autoscale(T::Type,s...)
     d = s[1]
+    if length(s) > 1
+        d += s[2]
+    end
     return 4/√(d)*rand(T,s...) - 2/√(d)
 end
 autoscale(s...) = autoscale(Float32,s...)
+
+symmetrize(x) = (x+x')/2
 
 function update_plot!(p; max_history = 10, attribute = :markercolor)
     num_series = length(p.series_list)
