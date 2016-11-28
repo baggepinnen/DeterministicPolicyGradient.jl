@@ -42,25 +42,31 @@ immutable DPGopts
     rmspropfactor::Float64
     eval_interval::Int
     divergence_threshold::Float64
+    mc_eval::Bool
+    mc_rollout::Bool
+    mc_amplification::Int
 end
 
 DPGopts(m;
-αΘ=0.001,
-αw=0.01,
-γ=0.99,
-τ=0.001,
-iters=20_000,
-stepreduce_interval=1000,
-stepreduce_factor=0.995,
-hold_actor=1000,
-experience_replay=0,
-experience_ratio=10,
-momentum=0.9,
-rmsprop=true,
-rmspropfactor=0.9,
-eval_interval=10,
-divergence_threshold=1.5) =
-DPGopts(αΘ,αw,γ,τ,iters,m,stepreduce_interval,stepreduce_factor,hold_actor,experience_replay,experience_ratio,momentum,rmsprop,rmspropfactor,eval_interval,divergence_threshold)
+αΘ                      = 0.001,
+αw                      = 0.01,
+γ                       = 0.99,
+τ                       = 0.001,
+iters                   = 20_000,
+stepreduce_interval     = 1000,
+stepreduce_factor       = 0.995,
+hold_actor              = 1000,
+experience_replay       = 0,
+experience_ratio        = 10,
+momentum                = 0.9,
+rmsprop                 = true,
+rmspropfactor           = 0.9,
+eval_interval           = 10,
+divergence_threshold    = 1.5,
+mc_eval                 = false,
+mc_rollout              = false,
+mc_amplification        = 1) =
+DPGopts(αΘ,αw,γ,τ,iters,m,stepreduce_interval,stepreduce_factor,hold_actor,experience_replay,experience_ratio,momentum,rmsprop,rmspropfactor,eval_interval,divergence_threshold,mc_eval,mc_rollout,mc_amplification)
 
 """
 Structure with functions to pass to the DMP
@@ -82,6 +88,7 @@ immutable DPGfuns
     reward::Function
     train_critic::Function
     update_tracking_networks::Function
+    fit_model::Function
 end
 
 function J(x,a,r)
@@ -103,35 +110,33 @@ end
 function dpg(opts, funs, Θ, x0, progressfun = (Θ,i,x,uout,cost, rollout)->0)
     println("=== Deterministic Policy Gradient ===")
     # Expand input structs
-    αΘ          = opts.αΘ
-    αw          = opts.αw
-    γ           = opts.γ
-    τ           = opts.τ
-    iters       = opts.iters
-    m           = opts.m
-    n           = length(x0)
-    mem         = SequentialReplayMemory(Float32,opts.experience_replay)
-    μ           = funs.μ
-    Q           = funs.Q
-    Qt          = funs.Qt
-    gradient   = funs.gradient
-    simulate    = funs.simulate
+    αΘ       = opts.αΘ
+    αw       = opts.αw
+    γ        = opts.γ
+    τ        = opts.τ
+    iters    = opts.iters
+    m        = opts.m
+    n        = length(x0)
+    mem      = SequentialReplayMemory(Float32,opts.experience_replay)
+    μ        = funs.μ
+    Q        = funs.Q
+    Qt       = funs.Qt
+    gradient = funs.gradient
+    simulate = funs.simulate
 
     # Initialize parameters
-    Θt          = deepcopy(Θ) # Tracking weights
-    Pw          = size(Θ,1)
-    Θb          = deepcopy(Θ) # Best weights
-    dΘs         = 1e-4ones(Pw) # Weight gradient states
-    dΘs2        = 0*ones(Pw)
-    dws         = 100ones(Pw)
-    cost        = zeros(iters)
-    bestcost    = Inf
-    x,uout      = simulate(Θ, x0)
-    T           = size(x,1)
+    Θt       = deepcopy(Θ) # Tracking weights
+    Pw       = size(Θ,1)
+    Θb       = deepcopy(Θ) # Best weights
+    dΘs      = 1e-4ones(Pw) # Weight gradient states
+    dΘs2     = 0*ones(Pw)
+    dws      = 100ones(Pw)
+    cost     = zeros(iters)
+    bestcost = Inf
+    x,uout   = simulate(Θ, x0)
+    T        = size(x,1)
 
     s = zeros(n)
-
-    times = zeros(3)
 
     function train!(rollout, update_actor, montecarlo = false)
         train_critic(rollout, montecarlo)
@@ -150,11 +155,14 @@ function dpg(opts, funs, Θ, x0, progressfun = (Θ,i,x,uout,cost, rollout)->0)
         batch_size = length(batch)
         if montecarlo
             s,a,targets = batch2say_montecarlo(batch, γ)
+            for ii = 1:opts.mc_amplification
+                funs.train_critic(s,a,targets)
+            end
             update_tracking_networks(false) # When we have taken a montecarlo step we update tracking networks immediately so that TD-learning does not pull us back again.
         else
-            s,a,targets = batch2say(batch, Qt, μ, Θt, γ)
+            s,a,targets = batch2say(batch, Qt, μ, Θ, γ)
+            funs.train_critic(s,a,targets)
         end
-        funs.train_critic(s,a,targets)
     end
 
     function experience_replay(i)
@@ -203,7 +211,7 @@ function dpg(opts, funs, Θ, x0, progressfun = (Θ,i,x,uout,cost, rollout)->0)
         local rollout = create_rollout(x,uout,i)
         progressfun(Θ,i,x,uout, cost,rollout)
         println(i, ", cost: ", cost[i] |> r5, " norm ∇Θ: ", Σ½(dΘs) |> r5)
-        train!(rollout, i > opts.hold_actor, false) # Here we can actually do MonteCarlo since this is on policy (not on tracking policy though)
+        train!(rollout, i > opts.hold_actor, opts.mc_eval) # Here we can actually do MonteCarlo since this is on policy (not on tracking policy though)
         opts.experience_replay > 0 && push!(mem,rollout)
         if cost[i] < bestcost
             bestcost = cost[i]
@@ -215,12 +223,12 @@ function dpg(opts, funs, Θ, x0, progressfun = (Θ,i,x,uout,cost, rollout)->0)
 
     # Main loop ================================================================
     for i = 1:iters
-        x0i         = x0 #+ 2randn(n) # TODO: this should not be hard coded
-        x,uout      = simulate(Θ, x0i, true)
+        x,uout      = simulate(Θ, x0, true)
         cost[i]     = J(x,uout,funs.reward)
         rollout     = create_rollout(x,uout,i)
+        funs.fit_model(mem)
         update_actor = i > opts.hold_actor
-        train!(rollout, update_actor, false)
+        train!(rollout, update_actor, opts.mc_rollout)
         update_tracking_networks(update_actor)
         αΘ,αw = reduce_stepsize_periodic!(i,αΘ,αw,opts)
         if opts.experience_replay > 0

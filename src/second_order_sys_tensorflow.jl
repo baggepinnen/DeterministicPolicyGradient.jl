@@ -19,35 +19,35 @@ x0 = [0,1.]
 
 # Setup DPG ====================================================================
 const m = 1
-σβ                      = 0.2 # 0.01
-αw                      = 0.001 # 0.02
+σβ      = 0.2 # 0.01
+αw      = 0.04 # 0.02
 
 ## Initialize solver options ===================================================
-eval_interval           = 5
-dpgopts = DPGopts(m,
-αΘ                      = 0.0001, #0.05
-γ                       = 0.999,
-τ                       = 0.001,
-iters                   = 200,
-stepreduce_interval     = 3,
-stepreduce_factor       = 0.99,
-hold_actor              = 20,
-experience_replay       = 1000,
-experience_ratio        = 40,
-momentum                = 0.1,
-rmsprop                 = true,
-rmspropfactor           = 0.9,
-eval_interval           = eval_interval,
-divergence_threshold    = 1.8)
-gradient_batch_size     = T
-# Initialize functions =========================================================
+eval_interval        = 5
+dpgopts              = DPGopts(m,
+αΘ                   = 0.001, #0.05
+γ                    = 0.999,
+τ                    = 0.1,
+iters                = 200,
+stepreduce_interval  = 3,
+stepreduce_factor    = 0.99,
+hold_actor           = 20,
+experience_replay    = 1000,
+experience_ratio     = 30,
+momentum             = 0.1,
+rmsprop              = true,
+rmspropfactor        = 0.9,
+eval_interval        = eval_interval,
+divergence_threshold = 1.8)
+gradient_batch_size  = T
+# Initialize functions       =========================================================
 
-const Q1        = [1,1]
-const Q2        = 0.1*ones(m)
-r(s,a,i)        = -Q1⋅s.^2 - Q2⋅a.^2
+const Q1 = [1,1]
+const Q2 = 0.1*ones(m)
+r(s,a,i) = -Q1⋅s.^2 - Q2⋅a.^2
 
-Lq = lqr(ss(G),diagm(Q1),diagm(Q2))
-μlqr(x) = -Lq*x
+Lq       = lqr(ss(G),diagm(Q1),diagm(Q2))
+μlqr(x)  = -Lq*x
 
 
 function μ(s,Θ,i)
@@ -60,10 +60,10 @@ end
 
 # Define network
 session = Session(Graph())
-a_ = placeholder(Float32, shape=[-1,m])
-s_ = placeholder(Float32, shape=[-1,n])
-y_ = placeholder(Float32, shape=[-1,1])
-∇μi_ = placeholder(Float32, shape=[-1,m*n,m])
+a_      = placeholder(Float32, shape=[-1,m])
+s_      = placeholder(Float32, shape=[-1,n])
+y_      = placeholder(Float32, shape=[-1,1])
+∇μi_    = placeholder(Float32, shape=[-1,m*n,m])
 
 sa = concat(1, [s_,a_]) # Python indexing of dims
 
@@ -105,9 +105,9 @@ end
 function update_tracking_networks()
     τ  = dpgopts.τ
     op = [
-    assign(Wt,τ*W   + (1-τ)*Wt),
-    assign(Ct,τ*C   + (1-τ)*Ct),
-    assign(Bt,τ*B   + (1-τ)*Bt)]
+    assign(Wt,τ*W + (1-τ)*Wt),
+    assign(Ct,τ*C + (1-τ)*Ct),
+    assign(Bt,τ*B + (1-τ)*Bt)]
     run(session,op)
 end
 
@@ -165,8 +165,8 @@ gui()
 
 if false
     s1vec = linspace(-1,1,100)
-    s2vec =linspace(-1,1,100)
-    uvec = linspace(-5,5,100)
+    s2vec = linspace(-1,1,100)
+    uvec  = linspace(-5,5,100)
 
     control_map = Float64[μ([s1,s2],Θ,1)[1] for s2 in s2vec, s1 in s1vec]
     heatmap(s1vec,s2vec,control_map,title="Control map",ylabel="Position 2",xlabel="Position 1");

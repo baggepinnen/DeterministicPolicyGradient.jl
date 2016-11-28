@@ -23,11 +23,11 @@ Returns multidimensional centers and covariance matrices by gridding.
 """
 function get_centers_multi(centers,σvec)
     (nbasis,Nsignals) = size(centers)
-    Nbasis::Int64 = nbasis^Nsignals
-    Centers = zeros(Nsignals, Nbasis)
-    Σ = zeros(Nsignals, Nbasis)
-    v = Nbasis
-    h = 1
+    Nbasis::Int64     = nbasis^Nsignals
+    Centers           = zeros(Nsignals, Nbasis)
+    Σ                 = zeros(Nsignals, Nbasis)
+    v                 = Nbasis
+    h                 = 1
     for i = 1:Nsignals
         v = convert(Int64,v / nbasis)
         Centers[i,:] = vec(repmat(centers[:,i]',v,h))'
@@ -38,30 +38,30 @@ function get_centers_multi(centers,σvec)
 end
 
 function RLS!(Θ, y, ϕ, P, λ)
-    Pϕ = P*ϕ
+    Pϕ     = P*ϕ
     P[:,:] = 1/λ*(P - (Pϕ*Pϕ')./(λ + ϕ'*Pϕ))
-    yp = (ϕ'Θ)[1]
-    e = y-yp
-    Θ += Pϕ*e
+    yp     = (ϕ'Θ)[1]
+    e      = y-yp
+    Θ +    = Pϕ*e
     return nothing
 end
 
 function RLS(Θ, y, ϕ, P, λ)
     Pϕ = P*ϕ
-    P = 1/λ*(P - (Pϕ*Pϕ')./(λ + ϕ'*Pϕ))
+    P  = 1/λ*(P - (Pϕ*Pϕ')./(λ + ϕ'*Pϕ))
     yp = (ϕ'Θ)[1]
-    e = y-yp
-    Θ = Θ + Pϕ*e
+    e  = y-yp
+    Θ  = Θ + Pϕ*e
     return Θ, P
 end
 
 function kalman(R1,R2,R12,Θ, y, ϕ, P)
     ϕTP = ϕ'P
-    K = (P*ϕ+R12)/(R2+ϕTP*ϕ)
-    P = P - (P*ϕ+R12)/(R2 + ϕTP*ϕ)*(ϕTP+R12') + R1
-    yp = (ϕ'Θ)[1]
-    e = y-yp
-    Θ = Θ + K*e
+    K   = (P*ϕ+R12)/(R2+ϕTP*ϕ)
+    P   = P - (P*ϕ+R12)/(R2 + ϕTP*ϕ)*(ϕTP+R12') + R1
+    yp  = (ϕ'Θ)[1]
+    e   = y-yp
+    Θ   = Θ + K*e
     return Θ, P
 end
 
@@ -143,8 +143,8 @@ end
 
 function discounted_return(r,γ)
     @assert (0.9 <= γ <= 1) "Gamma has a weird value in discounted_return: γ = $γ"
-    l = length(r)
-    retur = similar(r)
+    l        = length(r)
+    retur    = similar(r)
     retur[l] = r[l]
     for i = l-1:-1:1
         retur[i] = r[i] + γ*retur[i+1]
