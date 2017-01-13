@@ -95,6 +95,26 @@ function J(x,a,r)
     cost = -sum(r(x[t+1,:][:],a[t,:][:],t) for t = 1:size(x,1)-1)
 end
 
+function create_prior_rollout(rollout, i, bias)
+    local prior_rollout = Batch{Float32}(length(rollout))
+    ms = zeros(rollout[1].s)
+    ma = zeros(rollout[1].a)
+    for (ti,t) in enumerate(rollout)
+        ms = max(abs(t.s1), ms)
+        ma = max(abs(t.a),  ma)
+    end
+    for (ti,t) in enumerate(rollout)
+        s1          = t.s1 + ms.*randn(size(t.s1))
+        s           = t.s + ms.*randn(size(t.s))
+        a           = t.a + ma.*randn(size(t.a))
+        ri          = bias
+        trans       = Transition{Float32}(s,s1,a,ri,0.,ti,i)
+        prior_rollout[ti] = trans
+    end
+    prior_rollout
+
+end
+
 
 # """
 # `cost, Θ, w, v = dpg(opts, funs, state0, x0)`
@@ -229,6 +249,10 @@ function dpg(opts, funs, Θ, x0, progressfun = (Θ,i,x,uout,cost, rollout)->0)
         funs.fit_model(mem)
         update_actor = i > opts.hold_actor
         train!(rollout, update_actor, opts.mc_rollout)
+
+        prior_rollout     = create_prior_rollout(rollout, i, -50)
+        train_critic(prior_rollout, false)
+
         update_tracking_networks(update_actor)
         αΘ,αw = reduce_stepsize_periodic!(i,αΘ,αw,opts)
         if opts.experience_replay > 0

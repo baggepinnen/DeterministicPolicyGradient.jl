@@ -42,7 +42,7 @@ function RLS!(Θ, y, ϕ, P, λ)
     P[:,:] = 1/λ*(P - (Pϕ*Pϕ')./(λ + ϕ'*Pϕ))
     yp     = (ϕ'Θ)[1]
     e      = y-yp
-    Θ +    = Pϕ*e
+    Θ     += Pϕ*e
     return nothing
 end
 
