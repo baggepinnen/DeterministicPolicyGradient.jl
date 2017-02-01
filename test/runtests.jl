@@ -68,8 +68,8 @@ opts = DPGopts(m,
 iters               = 250,
 critic_update       = :rls,
 λrls                = 0.99999,
-stepreduce_interval = 1,
-stepreduce_factor   = 0.998,
+stepmod_interval = 1,
+stepmod_factor   = 0.998,
 hold_actor          = 10,
 experience_replay   = 0,
 experience_ratio    = 10,
@@ -91,8 +91,8 @@ opts = DPGopts(m,
 iters               = 250,
 critic_update       = :kalman,
 λrls                = 0.99999,
-stepreduce_interval = 1,
-stepreduce_factor   = 0.998,
+stepmod_interval = 1,
+stepmod_factor   = 0.998,
 hold_actor          = 10,
 experience_replay   = 0,
 experience_ratio    = 10,
@@ -115,8 +115,8 @@ opts = DPGopts(m,
 τ                   = 0.01,
 iters               = 3000,
 critic_update       = :gradient,
-stepreduce_interval = 10,
-stepreduce_factor   = 0.995,
+stepmod_interval = 10,
+stepmod_factor   = 0.995,
 hold_actor          = 500,
 experience_replay   = 0,
 experience_ratio    = 1,
@@ -162,3 +162,18 @@ sort!(mem)
 
 tt = sample_greedy!(mem)
 @test tt.δ == 3.
+
+
+
+
+
+
+
+# Test markov noise
+
+mn = MarkovNoise([1,0,-1], [0.9 0.05 0.05; 0.25 0.7 0.05; 0.25 0.05 0.7]')
+n = rand(mn,100000);
+steady_state = ((mn.P')^300)[1,:]
+for i = 1:3
+    @test isapprox(sum(n.==mn.outputs[i])/length(n), steady_state[i],atol=0.01)
+end

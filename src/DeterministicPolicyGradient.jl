@@ -1,7 +1,9 @@
+ __precompile__()
 module DeterministicPolicyGradient
 using Distributions, Plots
 export Batch, DPGopts, DPGfuns, DPGstate, dpg, meshgrid, meshgrid2, get_centers_multi, quadform, Qplot, Qplot!, autoscale, symmetrize, update_plot!
 
+include("noise.jl")
 include("experience_replay.jl")
 include("utilities.jl")
 include("dpg_tensorflow.jl")
