@@ -135,13 +135,13 @@ mem
 
 ## Test experience replay
 n = 2
-s = randn(n)
-s1 = randn(n)
-a = randn(n)
-reward = randn()
-δ1 = 1.
-δ2 = 2.
-δ3 = 3.
+s = randn(Float32,n)
+s1 = randn(Float32,n)
+a = randn(Float32,n)
+reward = randn(Float32)
+δ1 = Float32(1.)
+δ2 = Float32(2.)
+δ3 = Float32(3.)
 
 t1 = Transition(s,s1,a,reward,δ1,1,1)
 t2 = Transition(s,s1,a,reward,δ2,2,2)
@@ -150,7 +150,7 @@ t3 = Transition(s,s1,a,reward,δ3,3,3)
 @test t1 < t2
 
 N = 3
-mem = SortedReplayMemory(N)
+mem = SortedReplayMemory(Float32,N)
 
 push!(mem,t2)
 push!(mem,t1)
@@ -162,10 +162,11 @@ sort!(mem)
 
 tt = sample_greedy!(mem)
 @test tt.δ == 3.
+batch = sample_greedy!(mem,2)
 
-
-
-
+@test batch[1].δ == 2
+@test batch[2].δ == 1
+@test length(mem) == 0
 
 
 

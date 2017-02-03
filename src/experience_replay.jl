@@ -43,7 +43,7 @@ A `Transition` can be sampled from this memory using
 `sample_beta!(mem [, n])`\n
 `sample_uniform!(mem [, n])`
 """
-type SortedReplayMemory{T} <: ReplayMemory
+type SortedReplayMemory{T} <: ReplayMemory{T}
     mem::Batch{T}
     s::Int
     rs::Float64
@@ -158,6 +158,6 @@ function sample_many!{T}(mem::ReplayMemory{T},n,sample_fun)
 end
 
 
-sample_greedy!(mem::SortedReplayMemory,n) = sample_many!(mem::SortedReplayMemory,n,sample_greedy!)
-sample_beta!(mem::SortedReplayMemory,n) = sample_many!(mem::SortedReplayMemory,n,sample_beta!)
-sample_uniform!(mem::ReplayMemory,n) = sample_many!(mem::ReplayMemory,n,sample_uniform!)
+sample_greedy!(mem::SortedReplayMemory,n) = sample_many!(mem,n,sample_greedy!)
+sample_beta!(mem::SortedReplayMemory,n)   = sample_many!(mem,n,sample_beta!)
+sample_uniform!(mem::ReplayMemory,n)      = sample_many!(mem,n,sample_uniform!)
