@@ -1,5 +1,8 @@
 # DeterministicPolicyGradient
 
+[![DeterministicPolicyGradient](http://pkg.julialang.org/badges/DeterministicPolicyGradient_0.4.svg)](http://pkg.julialang.org/?pkg=DeterministicPolicyGradient)
+[![DeterministicPolicyGradient](http://pkg.julialang.org/badges/DeterministicPolicyGradient_0.5.svg)](http://pkg.julialang.org/?pkg=DeterministicPolicyGradient)
+[![DeterministicPolicyGradient](http://pkg.julialang.org/badges/DeterministicPolicyGradient_0.6.svg)](http://pkg.julialang.org/?pkg=DeterministicPolicyGradient)
 [![Build Status](https://travis-ci.org/baggepinnen/DeterministicPolicyGradient.jl.svg?branch=master)](https://travis-ci.org/baggepinnen/DeterministicPolicyGradient.jl)
 
 This package provides an implementation of the algorithm in the paper
